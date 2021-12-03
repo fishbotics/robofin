@@ -28,7 +28,7 @@ class FrankaRobot:
             xyz=[0, 0, 0.105], rpy=[0, 0, -0.785398163397]
         ),
     }
-    urdf = str(Path(__file__).parent.parent / "urdf" / "franka_panda" / "panda.urdf")
+    urdf = str(Path(__file__).parent / "urdf" / "franka_panda" / "panda.urdf")
 
     @staticmethod
     def within_limits(config):
@@ -117,7 +117,7 @@ class FrankaRobot:
 class FrankaGripper:
     JOINT_LIMITS = None
     DOF = 6
-    urdf = str(Path(__file__).parent.parent / "urdf" / "panda_hand" / "panda.urdf")
+    urdf = str(Path(__file__).parent / "urdf" / "panda_hand" / "panda.urdf")
 
     @staticmethod
     def random_configuration():
