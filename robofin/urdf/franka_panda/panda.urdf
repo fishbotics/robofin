@@ -196,7 +196,7 @@
     </inertial>
     <visual>
       <geometry>
-        <mesh filename="meshes/collision/link7.dae"/>
+        <mesh filename="meshes/visual/link7.dae"/>
       </geometry>
       <material name="panda_white"/>
     </visual>
