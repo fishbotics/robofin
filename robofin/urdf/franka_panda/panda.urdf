@@ -12,7 +12,7 @@
     </inertial>
     <visual>
       <geometry>
-        <mesh filename="meshes/collision/link0.dae"/>
+        <mesh filename="meshes/visual/link0.dae"/>
       </geometry>
       <material name="panda_white">
     		<color rgba="1. 1. 1. 1."/>
