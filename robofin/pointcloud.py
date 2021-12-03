@@ -95,7 +95,7 @@ class FrankaSampler:
         self.links = [l for l in self.robot.links if len(l.visuals)]
         meshes = [
             trimesh.load(
-                Path(FrankaRobot.urdf) / l.visuals[0].geometry.mesh.filename,
+                Path(FrankaRobot.urdf).parent / l.visuals[0].geometry.mesh.filename,
                 force="mesh",
             )
             for l in self.links
