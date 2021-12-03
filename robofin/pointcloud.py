@@ -48,8 +48,9 @@ def transform_pointcloud(pc, transformation_matrix, in_place=True):
 
 
 class FrankaFK:
-    def __init__(self, device):
+    def __init__(self, device, no_grad=False):
         self.robot = TorchURDF.load(FrankaRobot.urdf, device)
+        self.no_grad = no_grad
 
     def _end_effector(self, config):
         if config.ndim == 1:
