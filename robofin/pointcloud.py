@@ -9,6 +9,12 @@ from robofin.torch_urdf import TorchURDF
 from robofin.robots import FrankaRobot
 
 
+def project(transformation_matrix, point, rotate_only=False):
+    if rotate_only:
+        return (transformation_matrix @ np.append(point, [0]))[:3]
+    return (transformation_matrix @ np.append(point, [1]))[:3]
+
+
 def transform_pointcloud(pc, transformation_matrix, in_place=True):
     """
 
@@ -47,11 +53,7 @@ def transform_pointcloud(pc, transformation_matrix, in_place=True):
     return torch.cat((transformed_xyz[..., :3, :].transpose(N, M), pc[..., 3:]), dim=M)
 
 
-class FrankaFK:
-    def __init__(self, device, no_grad=False):
-        self.robot = TorchURDF.load(FrankaRobot.urdf, device)
-        self.no_grad = no_grad
-
+class SamplerBase:
     def _end_effector(self, config):
         if config.ndim == 1:
             config = config.unsqueeze(0)
@@ -68,7 +70,17 @@ class FrankaFK:
         return self._end_effector(config)
 
 
-class FrankaSampler:
+class FrankaFK(SamplerBase):
+    """
+    This is just a very simple class that only gives the end-effector pose.
+    """
+
+    def __init__(self, device, no_grad=False):
+        self.robot = TorchURDF.load(FrankaRobot.urdf, device)
+        self.no_grad = no_grad
+
+
+class FrankaSampler(SamplerBase):
     """
     This class allows for fast pointcloud sampling from the surface of a robot.
     At initialization, it loads a URDF and samples points from the mesh of each link.
