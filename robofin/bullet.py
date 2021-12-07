@@ -3,7 +3,7 @@ import pybullet as p
 from geometrout.primitive import Cuboid, Sphere
 from geometrout.transform import SE3
 
-from robofin import FrankaRobot, FrankaGripper
+from robofin.robots import FrankaRobot, FrankaGripper
 
 
 class BulletRobot:
@@ -208,6 +208,9 @@ class Bullet:
             robot = BulletFrankaGripper(self.clid)
         self.robots[robot.id] = robot
         return robot
+
+    def in_collision(self, robot, check_self=False):
+        return robot.in_collision(self.obstacle_ids, check_self)
 
     def load_cuboid(self, cuboid, color=None):
         assert isinstance(cuboid, Cuboid)
