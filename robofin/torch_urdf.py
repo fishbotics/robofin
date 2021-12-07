@@ -32,7 +32,7 @@ def configure_origin(value, device=None):
         value, torch.Tensor
     ), "Invalid type for origin, expect 4x4 torch tensor"
     assert value.shape == (4, 4)
-    return value.float().to(device)
+    return value.to(device)
 
 
 class TorchVisual(Visual):
@@ -208,7 +208,7 @@ class TorchJoint(Joint):
             if value.shape != (3,):
                 raise ValueError("Invalid shape for axis, should be (3,)")
             value = value / torch.norm(value)
-        self._axis = value.float()
+        self._axis = value
 
     @classmethod
     def _from_xml(cls, node, path, device):
@@ -292,14 +292,14 @@ class TorchJoint(Joint):
             if cfg is None:
                 cfg = torch.zeros(n_cfgs)
             return torch.matmul(
-                self.origin, self._rotation_matrices(cfg.float(), self.axis)
+                self.origin.type_as(cfg), self._rotation_matrices(cfg, self.axis)
             )
         elif self.joint_type == "prismatic":
             if cfg is None:
                 cfg = torch.zeros(n_cfgs)
             translation = torch.eye(4, device=self.device).repeat((n_cfgs, 1, 1))
             translation[:, :3, 3] = self.axis * cfg[:, np.newaxis]
-            return torch.matmul(self.origin, translation)
+            return torch.matmul(self.origin.type_as(cfg), translation)
         elif self.joint_type == "planar":
             raise NotImplementedError()
         elif self.joint_type == "floating":
@@ -493,10 +493,12 @@ class TorchURDF(URDF):
                         )
                 elif joint in joint_cfgs:
                     cfg_vals = joint_cfgs[joint]
-                poses = torch.matmul(joint.get_child_poses(cfg_vals, n_cfgs), poses)
+
+                child_poses = joint.get_child_poses(cfg_vals, n_cfgs)
+                poses = torch.matmul(child_poses, poses.type_as(child_poses))
 
                 if parent in fk:
-                    poses = torch.matmul(fk[parent], poses)
+                    poses = torch.matmul(fk[parent], poses.type_as(fk[parent]))
                     break
             fk[lnk] = poses
 
@@ -529,5 +531,7 @@ class TorchURDF(URDF):
         fk = OrderedDict()
         for link in lfk:
             for visual in link.visuals:
-                fk[visual.geometry] = torch.matmul(lfk[link], visual.origin)
+                fk[visual.geometry] = torch.matmul(
+                    lfk[link], visual.origin.type_as(lfk[link])
+                )
         return fk
