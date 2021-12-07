@@ -176,7 +176,6 @@ class Bullet:
             self.clid = p.connect(p.DIRECT)
         self.robots = {}
         self.obstacle_ids = []
-        p.setAdditionalSearchPath(pybullet_data.getDataPath())
 
     def __del__(self):
         """
@@ -233,7 +232,7 @@ class Bullet:
         )
         obstacle_id = p.createMultiBody(
             basePosition=cuboid.center,
-            baseOrientation=cuboid.xyzw,
+            baseOrientation=cuboid.pose.so3.xyzw,
             baseCollisionShapeIndex=obstacle_collision_id,
             physicsClientId=self.clid,
             **kwargs,
