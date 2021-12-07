@@ -70,7 +70,19 @@ class BulletRobot:
         p.performCollisionDetection(physicsClientId=self.clid)
         if check_self:
             contacts = p.getContactPoints(self.id, self.id, physicsClientId=self.clid)
-            if len(contacts) > 0:
+            # Manually filter out fixed connections that shouldn't be considered
+            # TODO fix this somehow
+            filtered = []
+            for c in contacts:
+                # panda_link8 just transforms the origin
+                if c[3] == 6 and c[4] == 8:
+                    continue
+                if c[3] == 8 and c[4] == 6:
+                    continue
+                if c[3] > 8 or c[4] > 8:
+                    continue
+                filtered.append(c)
+            if len(filtered) > 0:
                 return True
 
         # Iterate through all obstacles to check for collisions
