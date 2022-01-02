@@ -32,8 +32,9 @@ class FrankaRobot:
 
     @staticmethod
     def within_limits(config):
-        return np.all(config >= FrankaRobot.JOINT_LIMITS[:, 0]) and np.all(
-            config <= FrankaRobot.JOINT_LIMITS[:, 1]
+        # We have to add a small buffer because of float math
+        return np.all(config >= FrankaRobot.JOINT_LIMITS[:, 0] - 1e-10) and np.all(
+            config <= FrankaRobot.JOINT_LIMITS[:, 1] + 1e-10
         )
 
     @staticmethod
@@ -105,7 +106,6 @@ class FrankaRobot:
 
     @staticmethod
     def random_ik(pose, eff_frame="panda_link8"):
-        link7 = FrankaRobot.random_configuration()[-1]
         config = FrankaRobot.random_configuration()
         try:
             return FrankaRobot.ik(pose, config[-1], eff_frame)
