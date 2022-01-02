@@ -152,7 +152,7 @@ class BulletFrankaGripper(BulletRobot):
                     ]
                 )
             )
-            pose = pose @ transform
+            state = state @ transform
         elif frame == "panda_grasptarget":
             transform = SE3(
                 matrix=np.array(
@@ -164,13 +164,13 @@ class BulletFrankaGripper(BulletRobot):
                     ]
                 )
             )
-            pose = pose @ transform
+            state = state @ transform
 
-        x, y, z = pose.xyz
+        x, y, z = state.xyz
         p.resetJointState(self.id, 0, x, physicsClientId=self.clid)
         p.resetJointState(self.id, 1, y, physicsClientId=self.clid)
         p.resetJointState(self.id, 2, z, physicsClientId=self.clid)
-        p.resetJointStateMultiDof(self.id, 3, pose.so3.xyzw, physicsClientId=self.clid)
+        p.resetJointStateMultiDof(self.id, 3, state.so3.xyzw, physicsClientId=self.clid)
         p.resetJointState(self.id, 4, 0.02, physicsClientId=self.clid)
         p.resetJointState(self.id, 5, 0.02, physicsClientId=self.clid)
 
@@ -208,6 +208,47 @@ class Bullet:
             "distance": params[10],
             "target": params[11],
         }
+
+    def get_pointcloud_from_camera(
+        self, width, height, cam_forward, dist, cam_target, horizon, vertical
+    ):
+        cam_position = [
+            cam_target[0] - dist * cam_forward[0],
+            cam_target[1] - dist * cam_forward[1],
+            cam_target[2] - dist * cam_forward[2],
+        ]
+        ray_forward = [
+            (cam_target[0] - cam_position[0]),
+            (cam_target[1] - cam_position[1]),
+            (cam_target[2] - cam_position[2]),
+        ]
+        x_corners = [0, width, width, 0]
+        y_corners = [0, 0, height, height]
+        corners3D = []
+        img_w = int(width / 10)
+        img_h = int(height / 10)
+        _, _, rgb_buffer, depth_buffer, segmentation_buffer = p.getCameraImage(
+            img_w, img_h, renderer=p.ER_BULLET_HARDWARE_OPENGL
+        )
+        for x, y in zip(x_corners, y_corners):
+            ray_from, ray_to, _ = getRayFromTo(x, y)
+            vec = ray_to - ray_from
+            new_to = (0.01 / np.linalg.norm(vec)) * vec + ray_from
+            corners3D.append(new_to)
+
+        step_x = 5
+        step_y = 5
+        pointcloud = []
+        for w in range(0, img_w, step_x):
+            for h in range(0, img_h, step_y):
+                ray_from, ray_to, alpha = getRayFromTo(
+                    w * (width / img_w), h * (height / img_h)
+                )
+                vec = ray_to - ray_from
+                depth_img = float(depth_buffer[h, w])
+                far, near = 1000, 0.01
+                depth = (far * near / (far - (far - near) * depth_img)) / np.cos(alpha)
+                pointcloud.append((depth / np.linalg.norm(vec)) * vec + ray_from)
 
     def load_robot(self, robot_type):
         """
@@ -256,6 +297,7 @@ class Bullet:
         assert isinstance(sphere, Sphere)
         if color is None:
             color = [0.0, 0.0, 0.0, 1.0]
+        kwargs = {}
         if self.use_gui:
             obstacle_visual_id = p.createVisualShape(
                 shapeType=p.GEOM_SPHERE,
