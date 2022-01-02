@@ -128,11 +128,12 @@ class FrankaSampler(SamplerBase):
                 pc, device=device
             ).unsqueeze(0)
 
-    def _sample_end_effector(self, config, num_points):
+    def _sample_end_effector(self, config, pose, num_points):
         """
         An internal method--separated so that the public facing method can
         choose whether or not to have gradients
         """
+        assert pose is None, "Sampling based on end effector pose is not yet supported"
         if config.ndim == 1:
             config = config.unsqueeze(0)
         cfg = torch.cat(
@@ -163,7 +164,7 @@ class FrankaSampler(SamplerBase):
             return pc
         return pc[:, np.random.choice(pc.shape[1], num_points, replace=False), :]
 
-    def sample_end_effector(self, config, num_points=None):
+    def sample_end_effector(self, config=None, pose=None, num_points=None):
         """
         Samples points from the surface of the robot by calling fk.
 
@@ -179,9 +180,10 @@ class FrankaSampler(SamplerBase):
 
         """
         assert bool(self.num_fixed_points is None) ^ bool(num_points is None)
+        assert bool(config is None) ^ bool(pose is None)
         if self.no_grad:
             with torch.no_grad():
-                return self._sample_end_effector(config, num_points)
+                return self._sample_end_effector(config, pose, num_points)
         return self._sample_end_effector(config, num_points)
 
     def _sample(self, config, num_points):
