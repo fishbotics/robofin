@@ -292,14 +292,15 @@ class TorchJoint(Joint):
             if cfg is None:
                 cfg = torch.zeros(n_cfgs)
             return torch.matmul(
-                self.origin.type_as(cfg), self._rotation_matrices(cfg, self.axis)
+                self.origin.type_as(cfg),
+                self._rotation_matrices(cfg, self.axis).type_as(cfg),
             )
         elif self.joint_type == "prismatic":
             if cfg is None:
                 cfg = torch.zeros(n_cfgs)
             translation = torch.eye(4, device=self.device).repeat((n_cfgs, 1, 1))
             translation[:, :3, 3] = self.axis * cfg[:, np.newaxis]
-            return torch.matmul(self.origin.type_as(cfg), translation)
+            return torch.matmul(self.origin.type_as(cfg), translation.type_as(cfg))
         elif self.joint_type == "planar":
             raise NotImplementedError()
         elif self.joint_type == "floating":
