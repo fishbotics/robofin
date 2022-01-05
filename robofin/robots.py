@@ -29,13 +29,28 @@ class FrankaRobot:
         ),
     }
     urdf = str(Path(__file__).parent / "urdf" / "franka_panda" / "panda.urdf")
+    NEUTRAL = np.array(
+        [
+            -0.017792060227770554,
+            -0.7601235411041661,
+            0.019782607023391807,
+            -2.342050140544315,
+            0.029840531355804868,
+            1.5411935298621688,
+            0.7534486589746342,
+        ]
+    )
 
     @staticmethod
     def within_limits(config):
         # We have to add a small buffer because of float math
-        return np.all(config >= FrankaRobot.JOINT_LIMITS[:, 0] - 1e-10) and np.all(
-            config <= FrankaRobot.JOINT_LIMITS[:, 1] + 1e-10
+        return np.all(config >= FrankaRobot.JOINT_LIMITS[:, 0] - 1e-5) and np.all(
+            config <= FrankaRobot.JOINT_LIMITS[:, 1] + 1e-5
         )
+
+    @staticmethod
+    def random_neutral():
+        return FrankaRobot.NEUTRAL + np.random.normal(0, 0.25, 7)
 
     @staticmethod
     def fk(config, eff_frame="panda_link8"):
