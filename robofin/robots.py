@@ -49,8 +49,12 @@ class FrankaRobot:
         )
 
     @staticmethod
-    def random_neutral():
-        return FrankaRobot.NEUTRAL + np.random.normal(0, 0.25, 7)
+    def random_neutral(method="normal"):
+        if method == "normal":
+            return FrankaRobot.NEUTRAL + np.random.normal(0, 0.25, 7)
+        if method == "uniform":
+            return FrankaRobot.NEUTRAL + np.random.uniform(0, 0.25, 7)
+        assert False, "method must be either normal or uniform"
 
     @staticmethod
     def fk(config, eff_frame="panda_link8"):
