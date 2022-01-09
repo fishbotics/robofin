@@ -129,8 +129,7 @@ class FrankaRobot:
         try:
             return FrankaRobot.ik(pose, config[-1], eff_frame)
         except:
-            print(config)
-            raise
+            raise Exception(f"IK failed with {pose}")
 
 
 class FrankaGripper:

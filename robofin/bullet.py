@@ -195,12 +195,12 @@ class Bullet:
         """
         p.disconnect(self.clid)
 
-    def setCameraPosition(self, yaw, pitch, distance, target):
+    def set_camera_position(self, yaw, pitch, distance, target):
         p.resetDebugVisualizerCamera(
             distance, yaw, pitch, target, physicsClientId=self.clid
         )
 
-    def getCameraPosition(self):
+    def get_camera_position(self):
         params = p.getDebugVisualizerCamera(physicsClientId=self.clid)
         return {
             "yaw": params[8],
@@ -209,46 +209,72 @@ class Bullet:
             "target": params[11],
         }
 
-    def get_pointcloud_from_camera(
-        self, width, height, cam_forward, dist, cam_target, horizon, vertical
+    def get_depth_and_segmentation_images(
+        self,
+        width,
+        height,
+        fx,
+        fy,
+        cx,
+        cy,
+        near,
+        far,
+        camera_T_world,
     ):
-        cam_position = [
-            cam_target[0] - dist * cam_forward[0],
-            cam_target[1] - dist * cam_forward[1],
-            cam_target[2] - dist * cam_forward[2],
-        ]
-        ray_forward = [
-            (cam_target[0] - cam_position[0]),
-            (cam_target[1] - cam_position[1]),
-            (cam_target[2] - cam_position[2]),
-        ]
-        x_corners = [0, width, width, 0]
-        y_corners = [0, 0, height, height]
-        corners3D = []
-        img_w = int(width / 10)
-        img_h = int(height / 10)
-        _, _, rgb_buffer, depth_buffer, segmentation_buffer = p.getCameraImage(
-            img_w, img_h, renderer=p.ER_BULLET_HARDWARE_OPENGL
+        projection_matrix = (
+            2.0 * fx / width,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            2.0 * fy / height,
+            0.0,
+            0.0,
+            1.0 - 2.0 * cx / width,
+            2.0 * cy / height - 1.0,
+            (far + near) / (near - far),
+            -1.0,
+            0.0,
+            0.0,
+            2.0 * far * near / (near - far),
+            0.0,
         )
-        for x, y in zip(x_corners, y_corners):
-            ray_from, ray_to, _ = getRayFromTo(x, y)
-            vec = ray_to - ray_from
-            new_to = (0.01 / np.linalg.norm(vec)) * vec + ray_from
-            corners3D.append(new_to)
+        view_matrix = camera_T_world.matrix.T.reshape(16)
+        _, _, _, depth, seg = p.getCameraImage(
+            width=width,
+            height=height,
+            viewMatrix=view_matrix,
+            projectionMatrix=projection_matrix,
+            renderer=p.ER_TINY_RENDERER,
+            physicsClientId=self.clid,
+        )
+        depth_scaled = far * near / (far - (far - near) * depth)
+        return depth_scaled, seg
 
-        step_x = 5
-        step_y = 5
-        pointcloud = []
-        for w in range(0, img_w, step_x):
-            for h in range(0, img_h, step_y):
-                ray_from, ray_to, alpha = getRayFromTo(
-                    w * (width / img_w), h * (height / img_h)
-                )
-                vec = ray_to - ray_from
-                depth_img = float(depth_buffer[h, w])
-                far, near = 1000, 0.01
-                depth = (far * near / (far - (far - near) * depth_img)) / np.cos(alpha)
-                pointcloud.append((depth / np.linalg.norm(vec)) * vec + ray_from)
+    def get_pointcloud_from_camera(
+        self,
+        width,
+        height,
+        fx,
+        fy,
+        cx,
+        cy,
+        near,
+        far,
+        camera_T_world,
+    ):
+        depth_image = self.get_depth_image(
+            width,
+            height,
+            fx,
+            fy,
+            cx,
+            cy,
+            near,
+            far,
+            camera_T_world,
+        )
+        # TODO add this logic after Adithya helps out
 
     def load_robot(self, robot_type):
         """
