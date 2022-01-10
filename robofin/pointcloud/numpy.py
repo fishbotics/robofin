@@ -1,6 +1,21 @@
 import numpy as np
 
 
+def _calc_distances(p0, points):
+    return ((p0 - points) ** 2).sum(axis=1)
+
+
+def sample_futhest_points(pc, K):
+    # Code taken from https://codereview.stackexchange.com/questions/179561/farthest-point-algorithm-in-python
+    farthest_pts = np.zeros((K, 3))
+    farthest_pts[0] = pc[np.random.randint(len(pc))]
+    distances = _calc_distances(farthest_pts[0], pc)
+    for i in range(1, K):
+        farthest_pts[i] = pc[np.argmax(distances)]
+        distances = np.minimum(distances, _calc_distances(farthest_pts[i], pc))
+    return farthest_pts
+
+
 def project(transformation_matrix, point, rotate_only=False):
     if rotate_only:
         return (transformation_matrix @ np.append(point, [0]))[:3]
