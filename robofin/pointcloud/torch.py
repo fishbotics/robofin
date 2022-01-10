@@ -9,12 +9,6 @@ from robofin.torch_urdf import TorchURDF
 from robofin.robots import FrankaRobot
 
 
-def project(transformation_matrix, point, rotate_only=False):
-    if rotate_only:
-        return (transformation_matrix @ np.append(point, [0]))[:3]
-    return (transformation_matrix @ np.append(point, [1]))[:3]
-
-
 def transform_pointcloud(pc, transformation_matrix, in_place=True):
     """
 
@@ -31,6 +25,7 @@ def transform_pointcloud(pc, transformation_matrix, in_place=True):
     Mutates the pointcloud in place and transforms x, y, z according the homography
 
     """
+    assert isinstance(pc, torch.Tensor)
     assert type(pc) == type(transformation_matrix)
     assert pc.ndim == transformation_matrix.ndim
     if pc.ndim == 3:
