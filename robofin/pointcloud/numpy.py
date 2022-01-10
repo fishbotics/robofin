@@ -5,7 +5,7 @@ def _calc_distances(p0, points):
     return ((p0 - points) ** 2).sum(axis=1)
 
 
-def sample_futhest_points(pc, K):
+def sample_furthest_points(pc, K):
     # Code taken from https://codereview.stackexchange.com/questions/179561/farthest-point-algorithm-in-python
     farthest_pts = np.zeros((K, 3))
     farthest_pts[0] = pc[np.random.randint(len(pc))]
