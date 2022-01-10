@@ -4,6 +4,7 @@ from geometrout.primitive import Cuboid, Sphere
 from geometrout.transform import SE3
 
 from robofin.robots import FrankaRobot, FrankaGripper
+from robofin.pointcloud.numpy import transform_pointcloud
 
 
 class BulletRobot:
@@ -253,17 +254,19 @@ class Bullet:
 
     def get_pointcloud_from_camera(
         self,
-        width,
-        height,
-        fx,
-        fy,
-        cx,
-        cy,
-        near,
-        far,
         camera_T_world,
+        width=640,
+        height=480,
+        fx=616.36529541,
+        fy=616.20294189,
+        cx=310.25881958,
+        cy=310.25881958,
+        near=0.01,
+        far=10,
+        remove_robot=None,
+        finite_depth=True,
     ):
-        depth_image = self.get_depth_image(
+        depth_image, segmentation = self.get_depth_and_segmentation_images(
             width,
             height,
             fx,
@@ -271,10 +274,26 @@ class Bullet:
             cx,
             cy,
             near,
-            far,
+            far * 2,
             camera_T_world,
         )
-        # TODO add this logic after Adithya helps out
+        # Remove all points that are too far away
+        depth_image[depth_image > far] = 0.0
+        K = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]])
+        if remove_robot is not None:
+            depth_image[segmentation == remove_robot.id] = 0.0
+        x, y = np.meshgrid(np.arange(width), np.arange(height))
+        ones = np.ones((height, width))
+        image_points = np.stack((x, y, ones), axis=2).reshape(width * height, 3).T
+        backprojected = np.linalg.inv(K) @ image_points
+        pc = np.multiply(
+            np.tile(depth_image.reshape(1, width * height), (3, 1)), backprojected
+        ).T
+        if finite_depth:
+            pc = pc[np.isfinite(pc[:, 0]), :]
+        capture_camera = camera_T_world.inverse @ SE3(xyz=[0, 0, 0], quat=[0, 1, 0, 0])
+        transform_pointcloud(pc, capture_camera.matrix, in_place=True)
+        return pc
 
     def load_robot(self, robot_type):
         """
