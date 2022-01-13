@@ -116,19 +116,67 @@ class BulletRobot:
 class BulletFranka(BulletRobot):
     robot_type = FrankaRobot
 
-    def marionette(self, state):
+    def marionette(self, state, velocities=None):
+        if velocities is None:
+            velocities = [0.0 for _ in state]
+        assert len(state) == len(velocities)
         for i in range(0, 7):
-            p.resetJointState(self.id, i, state[i], physicsClientId=self.clid)
+            p.resetJointState(
+                self.id,
+                i,
+                state[i],
+                targetVelocity=velocities[i],
+                physicsClientId=self.clid,
+            )
 
         if len(state) == 9:
-            # Spread the fingers if they aren't included--prevents self collision
-            p.resetJointState(self.id, 9, state[7], physicsClientId=self.clid)
-            p.resetJointState(self.id, 10, state[8], physicsClientId=self.clid)
+            p.resetJointState(
+                self.id,
+                9,
+                state[7],
+                targetVelocity=velocities[7],
+                physicsClientId=self.clid,
+            )
+            p.resetJointState(
+                self.id,
+                10,
+                state[8],
+                targetVelocity=velocities[8],
+                physicsClientId=self.clid,
+            )
         elif len(state) == 7:
-            p.resetJointState(self.id, 9, 0.04, physicsClientId=self.clid)
-            p.resetJointState(self.id, 10, 0.04, physicsClientId=self.clid)
+            # Spread the fingers if they aren't included--prevents self collision
+            p.resetJointState(
+                self.id, 9, 0.04, targetVelocity=0.0, physicsClientId=self.clid
+            )
+            p.resetJointState(
+                self.id, 10, 0.04, targetVelocity=0.0, physicsClientId=self.clid
+            )
         else:
             raise Exception("Length of input state should be either 7 or 9")
+
+    def get_joint_states(self):
+        """
+        :return: (joint positions, joint velocities)
+        """
+        states = p.getJointStates(
+            self.id, [0, 1, 2, 3, 4, 5, 6, 9, 10], physicsClientId=self.clid
+        )
+        return [s[0] for s in states], [s[1] for s in states]
+
+    def control_position(self, state, velocity_gains):
+        assert len(state) in [7, 9]
+        p.setJointMotorControlArray(
+            self.id,
+            jointIndices=list(range(len(state))),
+            controlMode=p.POSITION_CONTROL,
+            targetPositions=state,
+            targetVelocities=[0] * len(state),
+            forces=[250] * len(state),
+            positionGains=[0.01] * len(state),
+            velocityGains=[1.0] * len(state),
+            physicsClientId=self.clid,
+        )
 
 
 class BulletFrankaGripper(BulletRobot):
@@ -395,3 +443,21 @@ class Bullet:
             if id is not None:
                 p.removeBody(id, physicsClientId=self.clid)
         self.obstacle_ids = []
+
+
+class BulletController(Bullet):
+    def __init__(self, gui=False, hz=12, substeps=20):
+        """
+        :param gui: Whether to use a gui to visualize the environment.
+            Only one gui instance allowed
+        """
+        super().__init__(gui)
+        p.setPhysicsEngineParameter(
+            fixedTimeStep=1 / hz,
+            numSubSteps=substeps,
+            deterministicOverlappingPairs=1,
+            physicsClientId=self.clid,
+        )
+
+    def step(self):
+        p.stepSimulation(physicsClientId=self.clid)
