@@ -1,6 +1,6 @@
 import numpy as np
 import pybullet as p
-from geometrout.primitive import Cuboid, Sphere
+from geometrout.primitive import Cuboid, Sphere, Cylinder
 from geometrout.transform import SE3
 
 from robofin.robots import FrankaRobot, FrankaGripper
@@ -387,6 +387,37 @@ class Bullet:
         self.obstacle_ids.append(obstacle_id)
         return obstacle_id
 
+    def load_cylinder(self, cylinder, color=None):
+        assert isinstance(cylinder, Cylinder)
+        if color is None:
+            color = [0.85882353, 0.14117647, 0.60392157, 1]
+        assert not cylinder.is_zero_volume(), "Cannot load zero volume cylinder"
+        kwargs = {}
+        if self.use_gui:
+            obstacle_visual_id = p.createVisualShape(
+                shapeType=p.GEOM_CYLINDER,
+                radius=cylinder.radius,
+                length=cylinder.height,
+                rgbaColor=color,
+                physicsClientId=self.clid,
+            )
+            kwargs["baseVisualShapeIndex"] = obstacle_visual_id
+        obstacle_collision_id = p.createCollisionShape(
+            shapeType=p.GEOM_CYLINDER,
+            radius=cylinder.radius,
+            height=cylinder.height,
+            physicsClientId=self.clid,
+        )
+        obstacle_id = p.createMultiBody(
+            basePosition=cylinder.center,
+            baseOrientation=cylinder.pose.so3.xyzw,
+            baseCollisionShapeIndex=obstacle_collision_id,
+            physicsClientId=self.clid,
+            **kwargs,
+        )
+        self.obstacle_ids.append(obstacle_id)
+        return obstacle_id
+
     def load_sphere(self, sphere, color=None):
         assert isinstance(sphere, Sphere)
         if color is None:
@@ -420,6 +451,8 @@ class Bullet:
                 continue
             elif isinstance(prim, Cuboid):
                 self.load_cuboid(prim, color)
+            elif isinstance(prim, Cylinder):
+                self.load_cylinder(prim, color)
             elif isinstance(prim, Sphere):
                 self.load_sphere(prim, color)
             else:
