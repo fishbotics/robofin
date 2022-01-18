@@ -29,6 +29,7 @@ class FrankaRobot:
         ),
     }
     urdf = str(Path(__file__).parent / "urdf" / "franka_panda" / "panda.urdf")
+    hd_urdf = str(Path(__file__).parent / "urdf" / "franka_panda" / "hd_panda.urdf")
     NEUTRAL = np.array(
         [
             -0.017792060227770554,

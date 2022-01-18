@@ -8,14 +8,19 @@ from robofin.pointcloud.numpy import transform_pointcloud
 
 
 class BulletRobot:
-    def __init__(self, clid):
+    def __init__(self, clid, hd=False):
         self.clid = clid
+        self.hd = hd
         self.id = self.load(clid)
         self._setup_robot()
 
     def load(self, clid, urdf_path=None):
+        if self.hd:
+            urdf = self.robot_type.hd_urdf
+        else:
+            urdf = self.robot_type.urdf
         return p.loadURDF(
-            self.robot_type.urdf,
+            urdf,
             useFixedBase=True,
             physicsClientId=clid,
             flags=p.URDF_USE_SELF_COLLISION,
@@ -92,6 +97,37 @@ class BulletRobot:
             if len(contacts) > 0:
                 return True
         return False
+
+    def get_collision_points(self, obstacles, check_self=False):
+        """
+        Checks whether the robot is in collision with the environment
+
+        :return: Boolean
+        """
+        points = []
+        # Step the simulator (only enough for collision detection)
+        p.performCollisionDetection(physicsClientId=self.clid)
+        if check_self:
+            contacts = p.getContactPoints(self.id, self.id, physicsClientId=self.clid)
+            # Manually filter out fixed connections that shouldn't be considered
+            # TODO fix this somehow
+            filtered = []
+            for c in contacts:
+                # panda_link8 just transforms the origin
+                if c[3] == 6 and c[4] == 8:
+                    continue
+                if c[3] == 8 and c[4] == 6:
+                    continue
+                if c[3] > 8 or c[4] > 8:
+                    continue
+                filtered.append(c)
+            points.extend([p[5] for p in filtered])
+
+        # Iterate through all obstacles to check for collisions
+        for id in obstacles:
+            contacts = p.getContactPoints(self.id, id, physicsClientId=self.clid)
+            points.extend([p[5] for p in contacts])
+        return points
 
     def _setup_robot(self):
         """
@@ -220,8 +256,8 @@ class BulletFrankaGripper(BulletRobot):
         p.resetJointState(self.id, 1, y, physicsClientId=self.clid)
         p.resetJointState(self.id, 2, z, physicsClientId=self.clid)
         p.resetJointStateMultiDof(self.id, 3, state.so3.xyzw, physicsClientId=self.clid)
-        p.resetJointState(self.id, 4, 0.02, physicsClientId=self.clid)
         p.resetJointState(self.id, 5, 0.02, physicsClientId=self.clid)
+        p.resetJointState(self.id, 6, 0.02, physicsClientId=self.clid)
 
 
 class Bullet:
@@ -344,14 +380,14 @@ class Bullet:
         transform_pointcloud(pc, capture_camera.matrix, in_place=True)
         return pc
 
-    def load_robot(self, robot_type):
+    def load_robot(self, robot_type, hd=False):
         """
         Generic function to load a robot.
         """
         if robot_type == FrankaRobot:
-            robot = BulletFranka(self.clid)
+            robot = BulletFranka(self.clid, hd)
         elif robot_type == FrankaGripper:
-            robot = BulletFrankaGripper(self.clid)
+            robot = BulletFrankaGripper(self.clid, hd)
         self.robots[robot.id] = robot
         return robot
 
@@ -446,17 +482,19 @@ class Bullet:
         return obstacle_id
 
     def load_primitives(self, primitives, color=None):
+        ids = []
         for prim in primitives:
             if prim.is_zero_volume():
                 continue
             elif isinstance(prim, Cuboid):
-                self.load_cuboid(prim, color)
+                ids.append(self.load_cuboid(prim, color))
             elif isinstance(prim, Cylinder):
-                self.load_cylinder(prim, color)
+                ids.append(self.load_cylinder(prim, color))
             elif isinstance(prim, Sphere):
-                self.load_sphere(prim, color)
+                ids.append(self.load_sphere(prim, color))
             else:
                 raise Exception("Only cuboids and spheres supported as primitives")
+        return ids
 
     def clear_obstacle(self, id):
         """
