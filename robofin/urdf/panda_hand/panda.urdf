@@ -72,7 +72,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="meshes/visual/hand.dae"/>
+        <mesh filename="meshes/visual/hand.obj"/>
       </geometry>
       <material name="">
         <color rgba="1 1 1 1"/>
@@ -94,7 +94,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="meshes/visual/finger.dae"/>
+        <mesh filename="meshes/visual/finger.obj"/>
       </geometry>
       <material name="">
         <color rgba="1 1 1 1"/>
@@ -116,7 +116,7 @@
     <visual>
       <origin rpy="0 0 3.14159265359" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="meshes/visual/finger.dae"/>
+        <mesh filename="meshes/visual/finger.obj"/>
       </geometry>
       <material name="">
         <color rgba="1 1 1 1"/>
