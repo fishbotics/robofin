@@ -348,8 +348,10 @@ class Bullet:
         near=0.01,
         far=10,
         remove_robot=None,
+        keep_robot=None,
         finite_depth=True,
     ):
+        assert not (keep_robot is not None and remove_robot is not None)
         depth_image, segmentation = self.get_depth_and_segmentation_images(
             width,
             height,
@@ -366,6 +368,8 @@ class Bullet:
         K = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]])
         if remove_robot is not None:
             depth_image[segmentation == remove_robot.id] = 0.0
+        elif keep_robot is not None:
+            depth_image[segmentation != keep_robot.id] = 0.0
         x, y = np.meshgrid(np.arange(width), np.arange(height))
         ones = np.ones((height, width))
         image_points = np.stack((x, y, ones), axis=2).reshape(width * height, 3).T
