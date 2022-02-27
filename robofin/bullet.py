@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 import pybullet as p
 from geometrout.primitive import Cuboid, Sphere, Cylinder
@@ -11,6 +13,7 @@ class BulletRobot:
     def __init__(self, clid, hd=False):
         self.clid = clid
         self.hd = hd
+        # TODO implement collision free robot
         self.id = self.load(clid)
         self._setup_robot()
 
@@ -200,7 +203,7 @@ class BulletFranka(BulletRobot):
         )
         return [s[0] for s in states], [s[1] for s in states]
 
-    def control_position(self, state, velocity_gains):
+    def control_position(self, state):
         assert len(state) in [7, 9]
         p.setJointMotorControlArray(
             self.id,
@@ -260,6 +263,32 @@ class BulletFrankaGripper(BulletRobot):
         p.resetJointState(self.id, 6, 0.02, physicsClientId=self.clid)
 
 
+class VisualGripper:
+    def __init__(self, clid):
+        self.id = self.load(clid)
+        self.clid = clid
+
+    def load(self, clid):
+        path = str(Path(__file__).parent / "standalone_meshes" / "open_gripper.obj")
+        obstacle_visual_id = p.createVisualShape(
+            shapeType=p.GEOM_MESH,
+            fileName=path,
+            rgbaColor=[1, 1, 1, 1],
+            physicsClientId=clid,
+        )
+        return p.createMultiBody(
+            basePosition=[0, 0, 0],  # t.center,
+            baseOrientation=[0, 0, 0, 1],  # t.pose.so3.xyzw,
+            baseVisualShapeIndex=obstacle_visual_id,
+            physicsClientId=clid,
+        )
+
+    def marionette(self, pose):
+        p.resetBasePositionAndOrientation(
+            self.id, pose.xyz, pose.so3.xyzw, physicsClientId=self.clid
+        )
+
+
 class Bullet:
     def __init__(self, gui=False):
         """
@@ -305,6 +334,7 @@ class Bullet:
         near,
         far,
         camera_T_world,
+        scale=True,
     ):
         projection_matrix = (
             2.0 * fx / width,
@@ -333,8 +363,9 @@ class Bullet:
             renderer=p.ER_TINY_RENDERER,
             physicsClientId=self.clid,
         )
-        depth_scaled = far * near / (far - (far - near) * depth)
-        return depth_scaled, seg
+        if scale:
+            depth = far * near / (far - (far - near) * depth)
+        return depth, seg
 
     def get_pointcloud_from_camera(
         self,
@@ -384,14 +415,17 @@ class Bullet:
         transform_pointcloud(pc, capture_camera.matrix, in_place=True)
         return pc
 
-    def load_robot(self, robot_type, hd=False):
+    def load_robot(self, robot_type, hd=False, collision_free=False):
         """
         Generic function to load a robot.
         """
         if robot_type == FrankaRobot:
             robot = BulletFranka(self.clid, hd)
         elif robot_type == FrankaGripper:
-            robot = BulletFrankaGripper(self.clid, hd)
+            if collision_free:
+                robot = VisualGripper(self.clid)
+            else:
+                robot = BulletFrankaGripper(self.clid)
         self.robots[robot.id] = robot
         return robot
 
@@ -499,6 +533,15 @@ class Bullet:
             else:
                 raise Exception("Only cuboids and spheres supported as primitives")
         return ids
+
+    def load_urdf_obstacle(self, path):
+        obstacle_id = p.loadURDF(
+            str(path),
+            useFixedBase=True,
+            physicsClientId=self.clid,
+        )
+        self.obstacle_ids.append(obstacle_id)
+        return obstacle_id
 
     def clear_obstacle(self, id):
         """
