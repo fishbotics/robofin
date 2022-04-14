@@ -132,6 +132,33 @@ class BulletRobot:
             points.extend([p[5] for p in contacts])
         return points
 
+    def get_deepest_collision(self, obstacles):
+        distances = []
+        # Step the simulator (only enough for collision detection)
+        p.performCollisionDetection(physicsClientId=self.clid)
+        # Iterate through all obstacles to check for collisions
+        for id in obstacles:
+            contacts = p.getContactPoints(self.id, id, physicsClientId=self.clid)
+            distances.extend([p[8] for p in contacts])
+
+        if len(distances) > 0:
+            # Distance will be negative if it's a true penetration
+            deepest_collision = min(distances)
+            if deepest_collision < 0:
+                return abs(deepest_collision)
+        return 0
+
+    def get_collision_depths(self, obstacles):
+        distances = []
+        # Step the simulator (only enough for collision detection)
+        p.performCollisionDetection(physicsClientId=self.clid)
+        # Iterate through all obstacles to check for collisions
+        for id in obstacles:
+            contacts = p.getContactPoints(self.id, id, physicsClientId=self.clid)
+            distances.extend([p[8] for p in contacts])
+
+        return [abs(d) for d in distances if d < 0]
+
     def _setup_robot(self):
         """
         Internal function for setting up the correspondence
@@ -186,10 +213,10 @@ class BulletFranka(BulletRobot):
         elif len(state) == 7:
             # Spread the fingers if they aren't included--prevents self collision
             p.resetJointState(
-                self.id, 9, 0.04, targetVelocity=0.0, physicsClientId=self.clid
+                self.id, 9, 0.02, targetVelocity=0.0, physicsClientId=self.clid
             )
             p.resetJointState(
-                self.id, 10, 0.04, targetVelocity=0.0, physicsClientId=self.clid
+                self.id, 10, 0.02, targetVelocity=0.0, physicsClientId=self.clid
             )
         else:
             raise Exception("Length of input state should be either 7 or 9")
@@ -534,12 +561,21 @@ class Bullet:
                 raise Exception("Only cuboids and spheres supported as primitives")
         return ids
 
-    def load_urdf_obstacle(self, path):
-        obstacle_id = p.loadURDF(
-            str(path),
-            useFixedBase=True,
-            physicsClientId=self.clid,
-        )
+    def load_urdf_obstacle(self, path, pose=None):
+        if pose is not None:
+            obstacle_id = p.loadURDF(
+                str(path),
+                basePosition=pose.xyz,
+                baseOrientation=pose.so3.xyzw,
+                useFixedBase=True,
+                physicsClientId=self.clid,
+            )
+        else:
+            obstacle_id = p.loadURDF(
+                str(path),
+                useFixedBase=True,
+                physicsClientId=self.clid,
+            )
         self.obstacle_ids.append(obstacle_id)
         return obstacle_id
 

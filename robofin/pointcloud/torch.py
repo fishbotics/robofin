@@ -75,6 +75,45 @@ class FrankaFK(SamplerBase):
         self.no_grad = no_grad
 
 
+# TODO finish implementing this
+# class FrankaEndEffectorSampler(SamplerBase):
+#     def __init__(self, device, no_grad=False):
+#         logging.getLogger("trimesh").setLevel("ERROR")
+#         self.no_grad = no_grad
+#         if self.no_grad:
+#             with torch.no_grad():
+#                 self._init_internal_(device)
+#         else:
+#             self._init_internal_(device)
+#
+#     def _init_internal_(self, device):
+#         links = [
+#             "meshes/visual/hand.dae",
+#             "meshes/visual/finger.dae",
+#             "meshes/visual/finger.dae",
+#         ]
+#         meshes = [
+#             trimesh.load(
+#                 Path(FrankaRobot.urdf).parent / l,
+#                 force="mesh",
+#             )
+#             for l in links
+#         ]
+#         # TODO perhaps implement fixed points version too
+#         areas = [mesh.bounding_box_oriented.area for mesh in meshes]
+#         num_points = np.round(4096 * np.array(areas) / np.sum(areas))
+#         self.points = {}
+#         for ii in range(len(meshes)):
+#             pc = trimesh.sample.sample_surface(meshes[ii], int(num_points[ii]))[0]
+#             self.points[self.links[ii].name] = torch.as_tensor(
+#                 pc, device=device
+#             ).unsqueeze(0)
+#
+#     def _sample(pose, frame="right_gripper"):
+#         assert frame == "right_gripper", "Other frames not implemented yet"
+#         pass
+
+
 class FrankaSampler(SamplerBase):
     """
     This class allows for fast pointcloud sampling from the surface of a robot.
@@ -87,7 +126,7 @@ class FrankaSampler(SamplerBase):
 
     """
 
-    def __init__(self, device, no_grad=False, num_fixed_points=None):
+    def __init__(self, device, no_grad=False, num_fixed_points=None, use_cache=False):
         logging.getLogger("trimesh").setLevel("ERROR")
         self.no_grad = no_grad
         self.num_fixed_points = num_fixed_points
@@ -132,7 +171,8 @@ class FrankaSampler(SamplerBase):
         if config.ndim == 1:
             config = config.unsqueeze(0)
         cfg = torch.cat(
-            (config, torch.zeros((config.shape[0], 2), device=config.device)), dim=1
+            (config, 0.02 * torch.ones((config.shape[0], 2), device=config.device)),
+            dim=1,
         )
         fk = self.robot.visual_geometry_fk_batch(cfg)
         eff_link_names = ["panda_hand", "panda_leftfinger", "panda_rightfinger"]
@@ -189,7 +229,8 @@ class FrankaSampler(SamplerBase):
         if config.ndim == 1:
             config = config.unsqueeze(0)
         cfg = torch.cat(
-            (config, torch.zeros((config.shape[0], 2), device=config.device)), dim=1
+            (config, 0.02 * torch.ones((config.shape[0], 2), device=config.device)),
+            dim=1,
         )
         fk = self.robot.visual_geometry_fk_batch(cfg)
         values = list(fk.values())

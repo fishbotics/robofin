@@ -18,6 +18,9 @@ class FrankaRobot:
             (-2.8973, 2.8973),
         ]
     )
+
+    VELOCITY_LIMIT = np.array([2.1750, 2.1750, 2.1750, 2.1750, 2.6100, 2.6100, 2.6100])
+    ACCELERATION_LIMIT = amax = np.array([15.0, 7.5, 10.0, 12.5, 15.0, 20.0, 20.0])
     DOF = 7
     EFF_LIST = set(["panda_link8", "right_gripper", "panda_grasptarget"])
     EFF_T_LIST = {
@@ -145,7 +148,7 @@ class FrankaRobot:
                 sim_franka.marionette(sample)
                 if not sim.in_collision(sim_franka, check_self=True):
                     return sample
-            return None
+        return None
 
 
 class FrankaGripper:
