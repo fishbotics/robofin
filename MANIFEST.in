@@ -1,1 +1,2 @@
 include robofin/urdf/*
+include robofin/pointcloud/cache/*

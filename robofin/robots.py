@@ -31,8 +31,11 @@ class FrankaRobot:
             xyz=[0, 0, 0.105], rpy=[0, 0, -0.785398163397]
         ),
     }
+    # These are strings because that's needed for Bullet
     urdf = str(Path(__file__).parent / "urdf" / "franka_panda" / "panda.urdf")
     hd_urdf = str(Path(__file__).parent / "urdf" / "franka_panda" / "hd_panda.urdf")
+    # This can be a Path because it's only ever used from Python
+    pointcloud_cache = Path(__file__).parent / "pointcloud" / "cache" / "franka"
     NEUTRAL = np.array(
         [
             -0.017792060227770554,

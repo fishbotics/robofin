@@ -132,13 +132,16 @@ class FrankaSampler(SamplerBase):
         self.num_fixed_points = num_fixed_points
         if self.no_grad:
             with torch.no_grad():
-                self._init_internal_(device)
+                self._init_internal_(device, use_cache)
         else:
-            self._init_internal_(device)
+            self._init_internal_(device, use_cache)
 
-    def _init_internal_(self, device):
+    def _init_internal_(self, device, use_cache):
         self.robot = TorchURDF.load(FrankaRobot.urdf, device)
         self.links = [l for l in self.robot.links if len(l.visuals)]
+        if use_cache and self._init_from_cache_(device):
+            return
+
         meshes = [
             trimesh.load(
                 Path(FrankaRobot.urdf).parent / l.visuals[0].geometry.mesh.filename,
@@ -161,6 +164,40 @@ class FrankaSampler(SamplerBase):
             self.points[self.links[ii].name] = torch.as_tensor(
                 pc, device=device
             ).unsqueeze(0)
+
+        # If we made it all the way here with the use_cache flag set,
+        # then we should be creating new cache files locally
+        if use_cache:
+            points_to_save = {
+                k: tensor.squeeze(0).cpu().numpy() for k, tensor in self.points.items()
+            }
+            file_name = self._get_cache_file_name_()
+            print(f"Saving new file to cache: {file_name}")
+            np.save(file_name, points_to_save)
+
+    def _get_cache_file_name_(self):
+        if self.num_fixed_points is not None:
+            return (
+                FrankaRobot.pointcloud_cache
+                / f"fixed_point_cloud_{self.num_fixed_points}.npy"
+            )
+        else:
+            return FrankaRobot.pointcloud_cache / "full_point_cloud.npy"
+
+    def _init_from_cache_(self, device):
+        file_name = self._get_cache_file_name_()
+        if not file_name.is_file():
+            return False
+
+        points = np.load(
+            file_name,
+            allow_pickle=True,
+        )
+        self.points = {
+            key: torch.as_tensor(pc, device=device).unsqueeze(0)
+            for key, pc in points.item().items()
+        }
+        return True
 
     def _sample_end_effector(self, config, pose, num_points):
         """
