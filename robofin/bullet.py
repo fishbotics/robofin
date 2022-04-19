@@ -10,12 +10,13 @@ from robofin.pointcloud.numpy import transform_pointcloud
 
 
 class BulletRobot:
-    def __init__(self, clid, hd=False):
+    def __init__(self, clid, hd=False, **kwargs):
         self.clid = clid
         self.hd = hd
         # TODO implement collision free robot
         self.id = self.load(clid)
         self._setup_robot()
+        self._set_robot_specifics(**kwargs)
 
     def load(self, clid, urdf_path=None):
         if self.hd:
@@ -178,9 +179,15 @@ class BulletRobot:
         for k, v in self._link_name_to_index.items():
             self._index_to_link_name[v] = k
 
+    def _set_robot_specifics(self, **kwargs):
+        raise NotImplemented("Must be set in the robot specific class")
+
 
 class BulletFranka(BulletRobot):
     robot_type = FrankaRobot
+
+    def _set_robot_specifics(self, default_prismatic_value=0.02):
+        self.default_prismatic_value = default_prismatic_value
 
     def marionette(self, state, velocities=None):
         if velocities is None:
@@ -213,10 +220,18 @@ class BulletFranka(BulletRobot):
         elif len(state) == 7:
             # Spread the fingers if they aren't included--prevents self collision
             p.resetJointState(
-                self.id, 9, 0.02, targetVelocity=0.0, physicsClientId=self.clid
+                self.id,
+                9,
+                self.default_prismatic_value,
+                targetVelocity=0.0,
+                physicsClientId=self.clid,
             )
             p.resetJointState(
-                self.id, 10, 0.02, targetVelocity=0.0, physicsClientId=self.clid
+                self.id,
+                10,
+                self.default_prismatic_value,
+                targetVelocity=0.0,
+                physicsClientId=self.clid,
             )
         else:
             raise Exception("Length of input state should be either 7 or 9")
@@ -247,6 +262,9 @@ class BulletFranka(BulletRobot):
 
 class BulletFrankaGripper(BulletRobot):
     robot_type = FrankaGripper
+
+    def _set_robot_specifics(self, default_prismatic_value=0.02):
+        self.default_prismatic_value = default_prismatic_value
 
     def marionette(self, state, frame="right_gripper"):
         assert isinstance(state, SE3)
@@ -286,8 +304,12 @@ class BulletFrankaGripper(BulletRobot):
         p.resetJointState(self.id, 1, y, physicsClientId=self.clid)
         p.resetJointState(self.id, 2, z, physicsClientId=self.clid)
         p.resetJointStateMultiDof(self.id, 3, state.so3.xyzw, physicsClientId=self.clid)
-        p.resetJointState(self.id, 5, 0.02, physicsClientId=self.clid)
-        p.resetJointState(self.id, 6, 0.02, physicsClientId=self.clid)
+        p.resetJointState(
+            self.id, 5, self.default_prismatic_value, physicsClientId=self.clid
+        )
+        p.resetJointState(
+            self.id, 6, self.default_prismatic_value, physicsClientId=self.clid
+        )
 
 
 class VisualGripper:
@@ -442,17 +464,17 @@ class Bullet:
         transform_pointcloud(pc, capture_camera.matrix, in_place=True)
         return pc
 
-    def load_robot(self, robot_type, hd=False, collision_free=False):
+    def load_robot(self, robot_type, hd=False, collision_free=False, **kwargs):
         """
         Generic function to load a robot.
         """
         if robot_type == FrankaRobot:
-            robot = BulletFranka(self.clid, hd)
+            robot = BulletFranka(self.clid, hd, **kwargs)
         elif robot_type == FrankaGripper:
             if collision_free:
                 robot = VisualGripper(self.clid)
             else:
-                robot = BulletFrankaGripper(self.clid)
+                robot = BulletFrankaGripper(self.clid, **kwargs)
         self.robots[robot.id] = robot
         return robot
 
