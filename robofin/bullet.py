@@ -186,7 +186,7 @@ class BulletRobot:
 class BulletFranka(BulletRobot):
     robot_type = FrankaRobot
 
-    def _set_robot_specifics(self, default_prismatic_value=0.02):
+    def _set_robot_specifics(self, default_prismatic_value=0.025):
         self.default_prismatic_value = default_prismatic_value
 
     def marionette(self, state, velocities=None):
@@ -263,7 +263,7 @@ class BulletFranka(BulletRobot):
 class BulletFrankaGripper(BulletRobot):
     robot_type = FrankaGripper
 
-    def _set_robot_specifics(self, default_prismatic_value=0.02):
+    def _set_robot_specifics(self, default_prismatic_value=0.025):
         self.default_prismatic_value = default_prismatic_value
 
     def marionette(self, state, frame="right_gripper"):

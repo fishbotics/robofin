@@ -126,10 +126,18 @@ class FrankaSampler(SamplerBase):
 
     """
 
-    def __init__(self, device, no_grad=False, num_fixed_points=None, use_cache=False):
+    def __init__(
+        self,
+        device,
+        no_grad=False,
+        num_fixed_points=None,
+        use_cache=False,
+        default_prismatic_value=0.025,
+    ):
         logging.getLogger("trimesh").setLevel("ERROR")
         self.no_grad = no_grad
         self.num_fixed_points = num_fixed_points
+        self.default_prismatic_value = default_prismatic_value
         if self.no_grad:
             with torch.no_grad():
                 self._init_internal_(device, use_cache)
@@ -208,7 +216,11 @@ class FrankaSampler(SamplerBase):
         if config.ndim == 1:
             config = config.unsqueeze(0)
         cfg = torch.cat(
-            (config, 0.02 * torch.ones((config.shape[0], 2), device=config.device)),
+            (
+                config,
+                self.default_prismatic_value
+                * torch.ones((config.shape[0], 2), device=config.device),
+            ),
             dim=1,
         )
         fk = self.robot.visual_geometry_fk_batch(cfg)
@@ -266,7 +278,11 @@ class FrankaSampler(SamplerBase):
         if config.ndim == 1:
             config = config.unsqueeze(0)
         cfg = torch.cat(
-            (config, 0.02 * torch.ones((config.shape[0], 2), device=config.device)),
+            (
+                config,
+                self.default_prismatic_value
+                * torch.ones((config.shape[0], 2), device=config.device),
+            ),
             dim=1,
         )
         fk = self.robot.visual_geometry_fk_batch(cfg)
