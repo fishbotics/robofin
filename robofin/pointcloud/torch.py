@@ -326,3 +326,49 @@ class FrankaSampler(SamplerBase):
             with torch.no_grad():
                 return self._sample(config, num_points)
         return self._sample(config, num_points)
+
+
+class FrankaCollisionSampler(SamplerBase):
+    def __init__(
+        self,
+        device,
+        default_prismatic_value=0.025,
+    ):
+        logging.getLogger("trimesh").setLevel("ERROR")
+        self.default_prismatic_value = default_prismatic_value
+        self.robot = TorchURDF.load(FrankaRobot.urdf, device)
+        self.spheres = []
+        for radius, point_set in FrankaRobot.SPHERES:
+            self.spheres.append(
+                (
+                    radius,
+                    {k: torch.as_tensor(v).to(device) for k, v in point_set.items()},
+                )
+            )
+
+    def sample(self, config):
+        if config.ndim == 1:
+            config = config.unsqueeze(0)
+        cfg = torch.cat(
+            (
+                config,
+                self.default_prismatic_value
+                * torch.ones((config.shape[0], 2), device=config.device),
+            ),
+            dim=1,
+        )
+        fk = self.robot.link_fk_batch(cfg, use_names=True)
+        points = []
+        for radius, spheres in self.spheres:
+            fk_points = []
+            for link_name in spheres:
+                pc = transform_pointcloud(
+                    spheres[link_name]
+                    .type_as(cfg)
+                    .repeat((fk[link_name].shape[0], 1, 1)),
+                    fk[link_name].type_as(cfg),
+                    in_place=True,
+                )
+                fk_points.append(pc)
+            points.append((radius, torch.cat(fk_points, dim=1)))
+        return points
