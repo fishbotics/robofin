@@ -47,7 +47,7 @@ class FrankaRobot:
             0.7534486589746342,
         ]
     )
-    # Keys are radius in millimeters, sub-keys are the corresponding links, values are centers on that link
+    # Tuples of radius in meters and the corresponding links, values are centers on that link
     SPHERES = [
         (0.08, {"panda_link0": [[0.0, 0.0, 0.05]]}),
         (
@@ -72,7 +72,6 @@ class FrankaRobot:
                     [0.0, 0.075, 0.0],
                     [0.0, 0.0, -0.22],
                 ],
-                "panda_link6": [[0.0, 0.0, 0.0], [0.08, 0.03, 0.0], [0.08, -0.01, 0.0]],
             },
         ),
         (
@@ -80,6 +79,7 @@ class FrankaRobot:
             {
                 "panda_link3": [[0.0, 0.0, -0.06]],
                 "panda_link5": [[0.0, 0.05, -0.18]],
+                "panda_link6": [[0.0, 0.0, 0.0], [0.08, -0.01, 0.0]],
                 "panda_link7": [[0.0, 0.0, 0.07]],
             },
         ),
@@ -87,7 +87,11 @@ class FrankaRobot:
             0.055,
             {
                 "panda_link3": [[0.08, 0.06, 0.0], [0.08, 0.02, 0.0]],
-                "panda_link4": [[0.0, 0.0, 0.02], [0.0, 0.0, 0.06], [-0.08, 0.06, 0.0]],
+                "panda_link4": [
+                    [0.0, 0.0, 0.02],
+                    [0.0, 0.0, 0.06],
+                    [-0.08, 0.06, 0.0],
+                ],
             },
         ),
         (
@@ -106,7 +110,8 @@ class FrankaRobot:
                 "panda_link7": [[0.02, 0.04, 0.08], [0.04, 0.02, 0.08]],
             },
         ),
-        (0.020, {"panda_link7": [[0.04, 0.06, 0.085], [0.06, 0.04, 0.085]]}),
+        (0.052, {"panda_link6": [[0.08, 0.035, 0.0]]}),
+        (0.02, {"panda_link7": [[0.04, 0.06, 0.085], [0.06, 0.04, 0.085]]}),
         (
             0.028,
             {
