@@ -49,20 +49,14 @@ def transform_pointcloud(pc, transformation_matrix, in_place=True):
 
 
 class SamplerBase:
-    def _end_effector(self, config):
+    def end_effector(self, config, frame="right_gripper"):
         if config.ndim == 1:
             config = config.unsqueeze(0)
         cfg = torch.cat(
             (config, torch.zeros((config.shape[0], 2), device=config.device)), dim=1
         )
         fk = self.robot.link_fk_batch(cfg, use_names=True)
-        return fk["right_gripper"]
-
-    def end_effector(self, config, force_no_grad=False):
-        if self.no_grad or force_no_grad:
-            with torch.no_grad():
-                return self._end_effector(config)
-        return self._end_effector(config)
+        return fk[frame]
 
 
 class FrankaFK(SamplerBase):
@@ -70,9 +64,8 @@ class FrankaFK(SamplerBase):
     This is just a very simple class that only gives the end-effector pose.
     """
 
-    def __init__(self, device, no_grad=False):
+    def __init__(self, device):
         self.robot = TorchURDF.load(FrankaRobot.urdf, device)
-        self.no_grad = no_grad
 
 
 # TODO finish implementing this
@@ -129,20 +122,14 @@ class FrankaSampler(SamplerBase):
     def __init__(
         self,
         device,
-        no_grad=False,
         num_fixed_points=None,
         use_cache=False,
         default_prismatic_value=0.025,
     ):
         logging.getLogger("trimesh").setLevel("ERROR")
-        self.no_grad = no_grad
         self.num_fixed_points = num_fixed_points
         self.default_prismatic_value = default_prismatic_value
-        if self.no_grad:
-            with torch.no_grad():
-                self._init_internal_(device, use_cache)
-        else:
-            self._init_internal_(device, use_cache)
+        self._init_internal_(device, use_cache)
 
     def _init_internal_(self, device, use_cache):
         self.robot = TorchURDF.load(FrankaRobot.urdf, device)
@@ -207,54 +194,55 @@ class FrankaSampler(SamplerBase):
         }
         return True
 
-    def _sample_end_effector(self, config, pose, num_points):
+    def sample_end_effector(self, poses, num_points, frame="right_gripper"):
         """
         An internal method--separated so that the public facing method can
         choose whether or not to have gradients
         """
-        assert pose is None, "Sampling based on end effector pose is not yet supported"
-        if config.ndim == 1:
-            config = config.unsqueeze(0)
-        cfg = torch.cat(
-            (
-                config,
-                self.default_prismatic_value
-                * torch.ones((config.shape[0], 2), device=config.device),
-            ),
-            dim=1,
-        )
-        fk = self.robot.visual_geometry_fk_batch(cfg)
+        assert poses.ndim in [2, 3]
+        assert frame == "right_gripper", "Other frames not yet suppported"
+        if poses.ndim == 2:
+            poses = poses.unsqueeze(0)
+        default_cfg = torch.zeros((1, 9), device=poses.device)
+        default_cfg[0, 7:] = self.default_prismatic_value
+        fk = self.robot.visual_geometry_fk_batch(default_cfg)
         eff_link_names = ["panda_hand", "panda_leftfinger", "panda_rightfinger"]
-        values = list(fk.values())
+
         values = [
-            values[idx] for idx, l in enumerate(self.links) if l.name in eff_link_names
+            list(fk.values())[idx]
+            for idx, l in enumerate(self.links)
+            if l.name in eff_link_names
         ]
         end_effector_links = [l for l in self.links if l.name in eff_link_names]
         assert len(end_effector_links) == len(values)
         fk_transforms = {}
         fk_points = []
+        gripper_T_hand = torch.as_tensor(
+            FrankaRobot.EFF_T_LIST[("panda_hand", "right_gripper")].inverse.matrix
+        ).type_as(poses)
+        right_gripper_transform = gripper_T_hand.unsqueeze(0) @ values[0].inverse()
         for idx, l in enumerate(end_effector_links):
             fk_transforms[l.name] = values[idx]
             pc = transform_pointcloud(
-                self.points[l.name]
-                .float()
-                .repeat((fk_transforms[l.name].shape[0], 1, 1)),
-                fk_transforms[l.name],
+                self.points[l.name].type_as(poses),
+                (right_gripper_transform @ fk_transforms[l.name]),
                 in_place=True,
             )
             fk_points.append(pc)
         pc = torch.cat(fk_points, dim=1)
+        pc = transform_pointcloud(pc.repeat(poses.size(0), 1, 1), poses)
         if num_points is None:
             return pc
         return pc[:, np.random.choice(pc.shape[1], num_points, replace=False), :]
 
-    def sample_end_effector(self, config=None, pose=None, num_points=None):
+    def sample(self, config, num_points=None):
         """
         Samples points from the surface of the robot by calling fk.
 
         Parameters
         ----------
-        config : Tensor of length (M,) or (N, M) where M is the number of actuated joints
+        config : Tensor of length (M,) or (N, M) where M is the number of
+            actuated joints.
             For example, if using the Franka, M is 9
         num_points : Number of points desired
 
@@ -264,17 +252,6 @@ class FrankaSampler(SamplerBase):
 
         """
         assert bool(self.num_fixed_points is None) ^ bool(num_points is None)
-        assert bool(config is None) ^ bool(pose is None)
-        if self.no_grad:
-            with torch.no_grad():
-                return self._sample_end_effector(config, pose, num_points)
-        return self._sample_end_effector(config, num_points)
-
-    def _sample(self, config, num_points):
-        """
-        An internal method--separated so that the public facing method can
-        choose whether or not to have gradients
-        """
         if config.ndim == 1:
             config = config.unsqueeze(0)
         cfg = torch.cat(
@@ -304,28 +281,6 @@ class FrankaSampler(SamplerBase):
         if num_points is None:
             return pc
         return pc[:, np.random.choice(pc.shape[1], num_points, replace=False), :]
-
-    def sample(self, config, num_points=None):
-        """
-        Samples points from the surface of the robot by calling fk.
-
-        Parameters
-        ----------
-        config : Tensor of length (M,) or (N, M) where M is the number of
-            actuated joints.
-            For example, if using the Franka, M is 9
-        num_points : Number of points desired
-
-        Returns
-        -------
-        N x num points x 3 pointcloud of robot points
-
-        """
-        assert bool(self.num_fixed_points is None) ^ bool(num_points is None)
-        if self.no_grad:
-            with torch.no_grad():
-                return self._sample(config, num_points)
-        return self._sample(config, num_points)
 
 
 class FrankaCollisionSampler(SamplerBase):
