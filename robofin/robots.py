@@ -24,11 +24,17 @@ class FrankaRobot:
     DOF = 7
     EFF_LIST = set(["panda_link8", "right_gripper", "panda_grasptarget"])
     EFF_T_LIST = {
+        ("panda_link8", "panda_hand"): SE3(
+            xyz=[0, 0, 0], quat=[0.9238795325113726, 0.0, 0.0, -0.3826834323648827]
+        ),
         ("panda_link8", "right_gripper"): SE3(
             xyz=[0, 0, 0.1], so3=SO3.from_rpy([0, 0, 2.35619449019])
         ),
         ("panda_link8", "panda_grasptarget"): SE3(
             xyz=[0, 0, 0.105], rpy=[0, 0, -0.785398163397]
+        ),
+        ("panda_hand", "right_gripper"): SE3(
+            xyz=[0.0, 0.0, 0.1], quat=[0.0, 0.0, 0.0, 1.0]
         ),
     }
     # These are strings because that's needed for Bullet
