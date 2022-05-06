@@ -28,7 +28,7 @@ class FrankaRobot:
             xyz=[0, 0, 0], quat=[0.9238795325113726, 0.0, 0.0, -0.3826834323648827]
         ),
         ("panda_link8", "right_gripper"): SE3(
-            xyz=[0, 0, 0.1], so3=SO3.from_rpy([0, 0, 2.35619449019])
+            xyz=[0, 0, 0.1], rpy=[0, 0, 2.35619449019]
         ),
         ("panda_link8", "panda_grasptarget"): SE3(
             xyz=[0, 0, 0.105], rpy=[0, 0, -0.785398163397]
