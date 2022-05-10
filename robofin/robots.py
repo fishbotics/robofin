@@ -291,6 +291,114 @@ class FrankaRealRobot(FrankaRobot):
         ]
     )
 
+    @staticmethod
+    def within_limits(config):
+        # We have to add a small buffer because of float math
+        return np.all(config >= FrankaRealRobot.JOINT_LIMITS[:, 0] - 1e-5) and np.all(
+            config <= FrankaRealRobot.JOINT_LIMITS[:, 1] + 1e-5
+        )
+
+    @staticmethod
+    def random_neutral(method="normal"):
+        if method == "normal":
+            return np.clip(
+                FrankaRealRobot.NEUTRAL + np.random.normal(0, 0.25, 7),
+                FrankaRealRobot.JOINT_LIMITS[:, 0],
+                FrankaRealRobot.JOINT_LIMITS[:, 1],
+            )
+        if method == "uniform":
+            # No need to clip this because it's always within range
+            return FrankaRealRobot.NEUTRAL + np.random.uniform(0, 0.25, 7)
+        assert False, "method must be either normal or uniform"
+
+    @staticmethod
+    def fk(config, eff_frame="right_gripper"):
+        """
+        Returns the SE3 frame of the end effector
+        """
+        assert (
+            eff_frame in FrankaRealRobot.EFF_LIST
+        ), "Default FK only calculated for a valid end effector frame"
+        pos, rot = get_fk(config)
+        mat = np.eye(4)
+        mat[:3, :3] = np.asarray(rot)
+        mat[:3, 3] = np.asarray(pos)
+        if eff_frame == "panda_link8":
+            return SE3(matrix=mat)
+        elif eff_frame == "right_gripper":
+            return (
+                SE3(matrix=mat)
+                @ FrankaRealRobot.EFF_T_LIST[("panda_link8", "right_gripper")]
+            )
+        else:
+            return (
+                SE3(matrix=mat)
+                @ FrankaRealRobot.EFF_T_LIST[("panda_link8", "panda_grasptarget")]
+            )
+
+    @staticmethod
+    def ik(pose, panda_link7, eff_frame="right_gripper"):
+        """
+        :param pose: SE3 pose expressed in specified end effector frame
+        :param panda_link7: Value for the joint panda_link7, other IK can be calculated with this joint value set.
+            Must be within joint range
+        :param eff_frame: Desired end effector frame, must be among [panda_link8, right_gripper, panda_grasptarget]
+        :return: Typically 4 solutions to IK
+        """
+        assert (
+            eff_frame in FrankaRealRobot.EFF_LIST
+        ), "IK only calculated for a valid end effector frame"
+        if eff_frame == "right_gripper":
+            pose = (
+                pose
+                @ FrankaRealRobot.EFF_T_LIST[("panda_link8", "right_gripper")].inverse
+            )
+        elif eff_frame == "panda_grasptarget":
+            pose = (
+                pose
+                @ FrankaRealRobot.EFF_T_LIST[
+                    ("panda_link8", "panda_grasptarget")
+                ].inverse
+            )
+        rot = pose.so3.matrix.tolist()
+        pos = pose.xyz
+        assert (
+            panda_link7 >= FrankaRealRobot.JOINT_LIMITS[-1, 0]
+            and panda_link7 <= FrankaRealRobot.JOINT_LIMITS[-1, 1]
+        ), f"Value for floating joint must be within range {FrankaRealRobot.JOINT_LIMITS[-1, :].tolist()}"
+        solutions = [np.asarray(s) for s in get_ik(pos, rot, [panda_link7])]
+        return [
+            s
+            for s in solutions
+            if (
+                np.all(s >= FrankaRealRobot.JOINT_LIMITS[:, 0])
+                and np.all(s <= FrankaRealRobot.JOINT_LIMITS[:, 1])
+            )
+        ]
+
+    @staticmethod
+    def random_configuration():
+        limits = FrankaRealRobot.JOINT_LIMITS
+        return (limits[:, 1] - limits[:, 0]) * (np.random.rand(7)) + limits[:, 0]
+
+    @staticmethod
+    def random_ik(pose, eff_frame="right_gripper"):
+        config = FrankaRealRobot.random_configuration()
+        try:
+            return FrankaRealRobot.ik(pose, config[-1], eff_frame)
+        except:
+            raise Exception(f"IK failed with {pose}")
+
+    @staticmethod
+    def collision_free_ik(sim, sim_franka, pose, frame="right_gripper", retries=1000):
+        for i in range(retries + 1):
+            samples = FrankaRealRobot.random_ik(pose, "right_gripper")
+            for sample in samples:
+                sim_franka.marionette(sample)
+                if not sim.in_collision(sim_franka, check_self=True):
+                    return sample
+        return None
+
 
 class FrankaGripper:
     JOINT_LIMITS = None
