@@ -115,7 +115,7 @@ class FrankaSelfCollisionChecker:
         fk_points = []
         # TODO this is where you left off
         for link_name, centers in self.points:
-            pc = transform_pointcloud(centers, fk[link_name], in_place=True)
+            pc = transform_pointcloud(centers, fk[link_name], in_place=False)
             fk_points.append(pc)
         transformed_centers = np.concatenate(fk_points, axis=0)
         points_matrix = np.tile(
