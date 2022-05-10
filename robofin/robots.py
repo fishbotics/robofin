@@ -390,12 +390,17 @@ class FrankaRealRobot(FrankaRobot):
             raise Exception(f"IK failed with {pose}")
 
     @staticmethod
-    def collision_free_ik(sim, sim_franka, pose, frame="right_gripper", retries=1000):
+    def collision_free_ik(
+        sim, sim_franka, selfcc, pose, frame="right_gripper", retries=1000
+    ):
         for i in range(retries + 1):
             samples = FrankaRealRobot.random_ik(pose, "right_gripper")
             for sample in samples:
                 sim_franka.marionette(sample)
-                if not sim.in_collision(sim_franka, check_self=True):
+                if not (
+                    sim.in_collision(sim_franka, check_self=True)
+                    or selfcc.has_self_collision(sample)
+                ):
                     return sample
         return None
 
