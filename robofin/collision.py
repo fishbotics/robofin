@@ -2,7 +2,7 @@
 Not sure where to put this function yet, but need it quickly so implementing it here
 Sphere model comes from STORM: https://github.com/NVlabs/storm/blob/e53556b64ca532e836f6bfd50893967f8224980e/content/configs/robot/franka_real_robot.yml
 """
-from urdfpy import URDF
+from urchin import URDF
 from robofin.robots import FrankaRobot
 from robofin.pointcloud.numpy import transform_pointcloud
 import logging
@@ -78,7 +78,7 @@ class FrankaSelfCollisionChecker:
         logging.getLogger("trimesh").setLevel("ERROR")
 
         self.default_prismatic_value = default_prismatic_value
-        self.robot = URDF.load(FrankaRobot.urdf)
+        self.robot = URDF.load(FrankaRobot.urdf, lazy_load_meshes=True)
         # Set up the center points for calculating the FK position
         link_names = []
         centers = {}

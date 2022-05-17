@@ -1,5 +1,6 @@
-from urdfpy import (
+from urchin import (
     URDF,
+    URDFTypeWithMesh,
     Joint,
     Link,
     Transmission,
@@ -8,7 +9,7 @@ from urdfpy import (
     Visual,
     Collision,
 )
-from urdfpy.utils import parse_origin
+from urchin.utils import parse_origin
 from collections import OrderedDict
 from lxml import etree as ET
 import os
@@ -50,8 +51,8 @@ class TorchVisual(Visual):
         self._origin = configure_origin(value, self.device)
 
     @classmethod
-    def _from_xml(cls, node, path, device):
-        kwargs = cls._parse(node, path)
+    def _from_xml(cls, node, path, lazy_load_meshes, device):
+        kwargs = cls._parse(node, path, lazy_load_meshes)
         kwargs["origin"] = torch.tensor(parse_origin(node))
         kwargs["device"] = device
         return TorchVisual(**kwargs)
@@ -59,8 +60,8 @@ class TorchVisual(Visual):
 
 class TorchCollision(Collision):
     @classmethod
-    def _from_xml(cls, node, path, device):
-        kwargs = cls._parse(node, path)
+    def _from_xml(cls, node, path, lazy_load_meshes, device):
+        kwargs = cls._parse(node, path, lazy_load_meshes)
         kwargs["origin"] = parse_origin(node)
         return TorchCollision(**kwargs)
 
@@ -77,7 +78,7 @@ class TorchLink(Link):
         super().__init__(name, inertial, visuals, collisions)
 
     @classmethod
-    def _parse_simple_elements(cls, node, path, device):
+    def _parse_simple_elements(cls, node, path, lazy_load_meshes, device):
         """Parse all elements in the _ELEMENTS array from the children of
         this node.
         Parameters
@@ -99,7 +100,10 @@ class TorchLink(Link):
             if not m:
                 v = node.find(t._TAG)
                 if r or v is not None:
-                    v = t._from_xml(v, path)
+                    if issubclass(t, URDFTypeWithMesh):
+                        v = t._from_xml(v, path, lazy_load_meshes)
+                    else:
+                        v = t._from_xml(v, path)
             else:
                 vs = node.findall(t._TAG)
                 if len(vs) == 0 and r:
@@ -107,12 +111,15 @@ class TorchLink(Link):
                         "Missing required subelement(s) of type {} when "
                         "parsing an object of type {}".format(t.__name__, cls.__name__)
                     )
-                v = [t._from_xml(n, path, device) for n in vs]
+                if issubclass(t, URDFTypeWithMesh):
+                    v = [t._from_xml(n, path, lazy_load_meshes, device) for n in vs]
+                else:
+                    v = [t._from_xml(n, path, device) for n in vs]
             kwargs[a] = v
         return kwargs
 
     @classmethod
-    def _parse(cls, node, path, device):
+    def _parse(cls, node, path, lazy_load_meshes, device):
         """Parse all elements and attributes in the _ELEMENTS and _ATTRIBS
         arrays for a node.
         Parameters
@@ -129,11 +136,11 @@ class TorchLink(Link):
             and elements in the class arrays.
         """
         kwargs = cls._parse_simple_attribs(node)
-        kwargs.update(cls._parse_simple_elements(node, path, device))
+        kwargs.update(cls._parse_simple_elements(node, path, lazy_load_meshes, device))
         return kwargs
 
     @classmethod
-    def _from_xml(cls, node, path, device):
+    def _from_xml(cls, node, path, lazy_load_meshes, device):
         """Create an instance of this class from an XML node.
         Parameters
         ----------
@@ -147,7 +154,7 @@ class TorchLink(Link):
         obj : :class:`URDFType`
             An instance of this class parsed from the node.
         """
-        return cls(**cls._parse(node, path, device))
+        return cls(**cls._parse(node, path, lazy_load_meshes, device))
 
 
 class TorchJoint(Joint):
@@ -332,7 +339,7 @@ class TorchURDF(URDF):
         super().__init__(name, links, joints, transmissions, materials, other_xml)
 
     @staticmethod
-    def load(file_obj, device=None):
+    def load(file_obj, lazy_load_meshes=True, device=None):
         """Load a URDF from a file.
         Parameters
         ----------
@@ -359,10 +366,10 @@ class TorchURDF(URDF):
             path, _ = os.path.split(file_obj.name)
 
         node = tree.getroot()
-        return TorchURDF._from_xml(node, path, device)
+        return TorchURDF._from_xml(node, path, lazy_load_meshes, device)
 
     @classmethod
-    def _parse_simple_elements(cls, node, path, device):
+    def _parse_simple_elements(cls, node, path, lazy_load_meshes, device):
         """Parse all elements in the _ELEMENTS array from the children of
         this node.
         Parameters
@@ -384,7 +391,10 @@ class TorchURDF(URDF):
             if not m:
                 v = node.find(t._TAG)
                 if r or v is not None:
-                    v = t._from_xml(v, path)
+                    if issubclass(t, URDFTypeWithMesh):
+                        v = t._from_xml(v, path, lazy_load_meshes)
+                    else:
+                        v = t._from_xml(v, path)
             else:
                 vs = node.findall(t._TAG)
                 if len(vs) == 0 and r:
@@ -392,12 +402,16 @@ class TorchURDF(URDF):
                         "Missing required subelement(s) of type {} when "
                         "parsing an object of type {}".format(t.__name__, cls.__name__)
                     )
-                v = [t._from_xml(n, path, device) for n in vs]
+                if issubclass(t, URDFTypeWithMesh):
+                    v = [t._from_xml(n, path, lazy_load_meshes, device) for n in vs]
+                else:
+                    v = [t._from_xml(n, path, device) for n in vs]
             kwargs[a] = v
         return kwargs
 
+
     @classmethod
-    def _parse(cls, node, path, device):
+    def _parse(cls, node, path, lazy_load_meshes, device):
         """Parse all elements and attributes in the _ELEMENTS and _ATTRIBS
         arrays for a node.
         Parameters
@@ -414,13 +428,13 @@ class TorchURDF(URDF):
             and elements in the class arrays.
         """
         kwargs = cls._parse_simple_attribs(node)
-        kwargs.update(cls._parse_simple_elements(node, path, device))
+        kwargs.update(cls._parse_simple_elements(node, path, lazy_load_meshes, device))
         return kwargs
 
     @classmethod
-    def _from_xml(cls, node, path, device):
+    def _from_xml(cls, node, path, lazy_load_meshes, device):
         valid_tags = set(["joint", "link", "transmission", "material"])
-        kwargs = cls._parse(node, path, device)
+        kwargs = cls._parse(node, path, lazy_load_meshes, device)
 
         extra_xml_node = ET.Element("extra")
         for child in node:
