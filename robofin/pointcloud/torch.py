@@ -48,65 +48,6 @@ def transform_pointcloud(pc, transformation_matrix, in_place=True):
     return torch.cat((transformed_xyz[..., :3, :].transpose(N, M), pc[..., 3:]), dim=M)
 
 
-class SamplerBase:
-    def end_effector(self, config, frame="right_gripper"):
-        if config.ndim == 1:
-            config = config.unsqueeze(0)
-        cfg = torch.cat(
-            (config, torch.zeros((config.shape[0], 2), device=config.device)), dim=1
-        )
-        fk = self.robot.link_fk_batch(cfg, use_names=True)
-        return fk[frame]
-
-
-class FrankaFK(SamplerBase):
-    """
-    This is just a very simple class that only gives the end-effector pose.
-    """
-
-    def __init__(self, device):
-        self.robot = TorchURDF.load(FrankaRobot.urdf, device)
-
-
-# TODO finish implementing this
-# class FrankaEndEffectorSampler(SamplerBase):
-#     def __init__(self, device, no_grad=False):
-#         logging.getLogger("trimesh").setLevel("ERROR")
-#         self.no_grad = no_grad
-#         if self.no_grad:
-#             with torch.no_grad():
-#                 self._init_internal_(device)
-#         else:
-#             self._init_internal_(device)
-#
-#     def _init_internal_(self, device):
-#         links = [
-#             "meshes/visual/hand.dae",
-#             "meshes/visual/finger.dae",
-#             "meshes/visual/finger.dae",
-#         ]
-#         meshes = [
-#             trimesh.load(
-#                 Path(FrankaRobot.urdf).parent / l,
-#                 force="mesh",
-#             )
-#             for l in links
-#         ]
-#         # TODO perhaps implement fixed points version too
-#         areas = [mesh.bounding_box_oriented.area for mesh in meshes]
-#         num_points = np.round(4096 * np.array(areas) / np.sum(areas))
-#         self.points = {}
-#         for ii in range(len(meshes)):
-#             pc = trimesh.sample.sample_surface(meshes[ii], int(num_points[ii]))[0]
-#             self.points[self.links[ii].name] = torch.as_tensor(
-#                 pc, device=device
-#             ).unsqueeze(0)
-#
-#     def _sample(pose, frame="right_gripper"):
-#         assert frame == "right_gripper", "Other frames not implemented yet"
-#         pass
-
-
 class FrankaSampler(SamplerBase):
     """
     This class allows for fast pointcloud sampling from the surface of a robot.
@@ -132,7 +73,7 @@ class FrankaSampler(SamplerBase):
         self._init_internal_(device, use_cache)
 
     def _init_internal_(self, device, use_cache):
-        self.robot = TorchURDF.load(FrankaRobot.urdf, device)
+        self.robot = TorchURDF.load(FrankaRobot.urdf, lazy_load_meshes=True, device=device)
         self.links = [l for l in self.robot.links if len(l.visuals)]
         if use_cache and self._init_from_cache_(device):
             return
@@ -291,7 +232,7 @@ class FrankaCollisionSampler(SamplerBase):
     ):
         logging.getLogger("trimesh").setLevel("ERROR")
         self.default_prismatic_value = default_prismatic_value
-        self.robot = TorchURDF.load(FrankaRobot.urdf, device)
+        self.robot = TorchURDF.load(FrankaRobot.urdf, lazy_load_meshes=True, device=device)
         self.spheres = []
         for radius, point_set in FrankaRobot.SPHERES:
             self.spheres.append(
