@@ -48,7 +48,7 @@ def transform_pointcloud(pc, transformation_matrix, in_place=True):
     return torch.cat((transformed_xyz[..., :3, :].transpose(N, M), pc[..., 3:]), dim=M)
 
 
-class FrankaSampler(SamplerBase):
+class FrankaSampler:
     """
     This class allows for fast pointcloud sampling from the surface of a robot.
     At initialization, it loads a URDF and samples points from the mesh of each link.
@@ -73,7 +73,9 @@ class FrankaSampler(SamplerBase):
         self._init_internal_(device, use_cache)
 
     def _init_internal_(self, device, use_cache):
-        self.robot = TorchURDF.load(FrankaRobot.urdf, lazy_load_meshes=True, device=device)
+        self.robot = TorchURDF.load(
+            FrankaRobot.urdf, lazy_load_meshes=True, device=device
+        )
         self.links = [l for l in self.robot.links if len(l.visuals)]
         if use_cache and self._init_from_cache_(device):
             return
@@ -224,7 +226,7 @@ class FrankaSampler(SamplerBase):
         return pc[:, np.random.choice(pc.shape[1], num_points, replace=False), :]
 
 
-class FrankaCollisionSampler(SamplerBase):
+class FrankaCollisionSampler:
     def __init__(
         self,
         device,
@@ -232,7 +234,9 @@ class FrankaCollisionSampler(SamplerBase):
     ):
         logging.getLogger("trimesh").setLevel("ERROR")
         self.default_prismatic_value = default_prismatic_value
-        self.robot = TorchURDF.load(FrankaRobot.urdf, lazy_load_meshes=True, device=device)
+        self.robot = TorchURDF.load(
+            FrankaRobot.urdf, lazy_load_meshes=True, device=device
+        )
         self.spheres = []
         for radius, point_set in FrankaRobot.SPHERES:
             self.spheres.append(
