@@ -137,6 +137,20 @@ class FrankaSampler:
         }
         return True
 
+    def end_effector_pose(self, config, frame="right_gripper"):
+        if config.ndim == 1:
+            config = config.unsqueeze(0)
+        cfg = torch.cat(
+            (
+                config,
+                self.default_prismatic_value
+                * torch.ones((config.shape[0], 2), device=config.device),
+            ),
+            dim=1,
+        )
+        fk = self.robot.link_fk_batch(cfg, use_names=True)
+        return fk[frame]
+
     def sample_end_effector(self, poses, num_points, frame="right_gripper"):
         """
         An internal method--separated so that the public facing method can
