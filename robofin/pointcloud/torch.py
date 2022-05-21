@@ -245,6 +245,7 @@ class FrankaCollisionSampler:
         self,
         device,
         default_prismatic_value=0.025,
+        with_base_link=True,
     ):
         logging.getLogger("trimesh").setLevel("ERROR")
         self.default_prismatic_value = default_prismatic_value
@@ -253,10 +254,15 @@ class FrankaCollisionSampler:
         )
         self.spheres = []
         for radius, point_set in FrankaRobot.SPHERES:
+            spheres = {k: torch.as_tensor(v).to(device) for k, v in point_set.items()}
+            if not with_base_link:
+                spheres = {k: v for k, v in spheres.items() if k != "panda_link0"}
+            if not len(spheres):
+                continue
             self.spheres.append(
                 (
                     radius,
-                    {k: torch.as_tensor(v).to(device) for k, v in point_set.items()},
+                    spheres,
                 )
             )
 
