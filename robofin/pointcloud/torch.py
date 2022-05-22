@@ -66,10 +66,12 @@ class FrankaSampler:
         num_fixed_points=None,
         use_cache=False,
         default_prismatic_value=0.025,
+        with_base_link=True,
     ):
         logging.getLogger("trimesh").setLevel("ERROR")
         self.num_fixed_points = num_fixed_points
         self.default_prismatic_value = default_prismatic_value
+        self.with_base_link = with_base_link
         self._init_internal_(device, use_cache)
 
     def _init_internal_(self, device, use_cache):
@@ -225,6 +227,8 @@ class FrankaSampler:
         fk_transforms = {}
         fk_points = []
         for idx, l in enumerate(self.links):
+            if l.name == "panda_link0" and not self.with_base_link:
+                continue
             fk_transforms[l.name] = values[idx]
             pc = transform_pointcloud(
                 self.points[l.name]
