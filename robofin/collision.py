@@ -5,6 +5,7 @@ Sphere model comes from STORM: https://github.com/NVlabs/storm/blob/e53556b64ca5
 from urchin import URDF
 from robofin.robots import FrankaRobot
 from robofin.pointcloud.numpy import transform_pointcloud
+from geometrout.primitive import Sphere
 import logging
 import numpy as np
 
@@ -105,6 +106,16 @@ class FrankaSelfCollisionChecker:
                     continue
                 self.collision_matrix[idx1, idx2] = radius1 + radius2
 
+    def spheres(self, config):
+        cfg = np.ones(8)
+        cfg[:7] = config
+        cfg[-1] = self.default_prismatic_value
+        fk = self.robot.link_fk(cfg, use_names=True)
+        spheres = []
+        for link_name, center, radius in SELF_COLLISION_SPHERES:
+            spheres.append(Sphere((fk[link_name] @ np.array([*center, 1]))[:3], radius))
+        return spheres
+
     def has_self_collision(self, config):
         # Cfg should have 8 dof because the two fingers mirror each other in
         # this urdf
@@ -125,3 +136,42 @@ class FrankaSelfCollisionChecker:
             points_matrix - points_matrix.transpose((1, 0, 2)), axis=2
         )
         return np.any(distances < self.collision_matrix)
+
+
+class FrankaSelfCollisionSampler(FrankaSelfCollisionChecker):
+    def __init__(self, default_prismatic_value=0.025):
+        super().__init__(default_prismatic_value)
+        self.link_points = {}
+        total_points = 10000
+        radius_sum = sum([radius ** 2 for (_, _, radius) in SELF_COLLISION_SPHERES])
+        points_per_sphere = total_points / radius_sum
+
+        for idx1, (link_name, center, radius) in enumerate(SELF_COLLISION_SPHERES):
+            sphere = Sphere(center, radius)
+            if link_name in self.link_points:
+                self.link_points[link_name] = np.concatenate(
+                    (
+                        self.link_points[link_name],
+                        sphere.sample_surface(int(points_per_sphere * radius ** 2)),
+                    ),
+                    axis=0,
+                )
+            else:
+                self.link_points[link_name] = sphere.sample_surface(
+                    int(points_per_sphere * radius ** 2)
+                )
+
+    def sample(self, config, n):
+        cfg = np.ones(8)
+        cfg[:7] = config
+        cfg[-1] = self.default_prismatic_value
+        fk = self.robot.link_fk(cfg, use_names=True)
+        pointcloud = []
+        for link_name, centers in self.points:
+            pc = transform_pointcloud(
+                self.link_points[link_name], fk[link_name], in_place=False
+            )
+            pointcloud.append(pc)
+        pointcloud = np.concatenate(pointcloud, axis=0)
+        mask = np.random.choice(np.arange(len(pointcloud)), n, replace=False)
+        return pointcloud[mask]
