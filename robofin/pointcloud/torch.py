@@ -7,6 +7,7 @@ import trimesh
 
 from robofin.torch_urdf import TorchURDF
 from robofin.robots import FrankaRobot
+from robofin.collision import FrankaSelfCollisionSampler as NumpySelfCollisionSampler
 
 
 def transform_pointcloud(pc, transformation_matrix, in_place=True):
@@ -296,3 +297,36 @@ class FrankaCollisionSampler:
                 fk_points.append(pc)
             points.append((radius, torch.cat(fk_points, dim=1)))
         return points
+
+
+class FrankaSelfCollisionSampler(NumpySelfCollisionSampler):
+    def __init__(self, device, default_prismatic_value=0.025):
+        super().__init__(default_prismatic_value)
+        self.robot = TorchURDF.load(
+            FrankaRobot.urdf, lazy_load_meshes=True, device=device
+        )
+        for k, v in self.link_points.items():
+            self.link_points[k] = torch.as_tensor(v, device=device).unsqueeze(0)
+
+    def sample(self, config, n):
+        if config.ndim == 1:
+            config = config.unsqueeze(0)
+        cfg = torch.cat(
+            (
+                config,
+                self.default_prismatic_value
+                * torch.ones((config.shape[0], 2), device=config.device),
+            ),
+            dim=1,
+        )
+        fk = self.robot.link_fk_batch(cfg, use_names=True)
+        pointcloud = []
+        for link_name, points in self.link_points.items():
+            pc = transform_pointcloud(
+                points.float().repeat((fk[link_name].shape[0], 1, 1)),
+                fk[link_name],
+                in_place=True,
+            )
+            pointcloud.append(pc)
+        pc = torch.cat(pointcloud, dim=1)
+        return pc[:, np.random.choice(pc.shape[1], n, replace=False), :]
