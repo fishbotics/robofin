@@ -8,6 +8,7 @@ import trimesh
 from robofin.torch_urdf import TorchURDF
 from robofin.robots import FrankaRobot
 from robofin.collision import FrankaSelfCollisionSampler as NumpySelfCollisionSampler
+from geometrout.primitive import Sphere
 
 
 def transform_pointcloud(pc, transformation_matrix, in_place=True):
@@ -260,6 +261,7 @@ class FrankaCollisionSampler:
         device,
         default_prismatic_value=0.025,
         with_base_link=True,
+        margin=0.0,
     ):
         logging.getLogger("trimesh").setLevel("ERROR")
         self.default_prismatic_value = default_prismatic_value
@@ -268,19 +270,74 @@ class FrankaCollisionSampler:
         )
         self.spheres = []
         for radius, point_set in FrankaRobot.SPHERES:
-            spheres = {k: torch.as_tensor(v).to(device) for k, v in point_set.items()}
+            sphere_centers = {
+                k: torch.as_tensor(v).to(device) for k, v in point_set.items()
+            }
             if not with_base_link:
-                spheres = {k: v for k, v in spheres.items() if k != "panda_link0"}
-            if not len(spheres):
+                sphere_centers = {
+                    k: v for k, v in sphere_centers.items() if k != "panda_link0"
+                }
+            if not len(sphere_centers):
                 continue
             self.spheres.append(
                 (
-                    radius,
-                    spheres,
+                    radius + margin,
+                    sphere_centers,
                 )
             )
 
-    def sample(self, config):
+        all_spheres = {}
+        for radius, point_set in FrankaRobot.SPHERES:
+            for link_name, centers in point_set.items():
+                if not with_base_link and link_name == "panda_link0":
+                    continue
+                for c in centers:
+                    all_spheres[link_name] = all_spheres.get(link_name, []) + [
+                        Sphere(c, radius + margin)
+                    ]
+
+        total_points = 10000
+        surface_scalar_sum = sum(
+            [sum([s.radius ** 2 for s in v]) for v in all_spheres.values()]
+        )
+        surface_scalar = total_points / surface_scalar_sum
+        self.link_points = {}
+        for link_name, spheres in all_spheres.items():
+            self.link_points[link_name] = torch.as_tensor(
+                np.concatenate(
+                    [
+                        s.sample_surface(int(surface_scalar * s.radius ** 2))
+                        for s in spheres
+                    ],
+                    axis=0,
+                ),
+                device=device,
+            )
+
+    def sample(self, config, n):
+        if config.ndim == 1:
+            config = config.unsqueeze(0)
+        cfg = torch.cat(
+            (
+                config,
+                self.default_prismatic_value
+                * torch.ones((config.shape[0], 2), device=config.device),
+            ),
+            dim=1,
+        )
+        fk = self.robot.link_fk_batch(cfg, use_names=True)
+        pointcloud = []
+        for link_name, points in self.link_points.items():
+            pc = transform_pointcloud(
+                points.float().repeat((fk[link_name].shape[0], 1, 1)),
+                fk[link_name],
+                in_place=True,
+            )
+            pointcloud.append(pc)
+        pc = torch.cat(pointcloud, dim=1)
+        return pc[:, np.random.choice(pc.shape[1], n, replace=False), :]
+
+    def compute_spheres(self, config):
         if config.ndim == 1:
             config = config.unsqueeze(0)
         cfg = torch.cat(

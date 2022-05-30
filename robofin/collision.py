@@ -143,8 +143,10 @@ class FrankaSelfCollisionSampler(FrankaSelfCollisionChecker):
         super().__init__(default_prismatic_value)
         self.link_points = {}
         total_points = 10000
-        radius_sum = sum([radius ** 2 for (_, _, radius) in SELF_COLLISION_SPHERES])
-        points_per_sphere = total_points / radius_sum
+        surface_scalar_sum = sum(
+            [radius ** 2 for (_, _, radius) in SELF_COLLISION_SPHERES]
+        )
+        surface_scalar = total_points / surface_scalar_sum
 
         for idx1, (link_name, center, radius) in enumerate(SELF_COLLISION_SPHERES):
             sphere = Sphere(center, radius)
@@ -152,13 +154,13 @@ class FrankaSelfCollisionSampler(FrankaSelfCollisionChecker):
                 self.link_points[link_name] = np.concatenate(
                     (
                         self.link_points[link_name],
-                        sphere.sample_surface(int(points_per_sphere * radius ** 2)),
+                        sphere.sample_surface(int(surface_scalar * radius ** 2)),
                     ),
                     axis=0,
                 )
             else:
                 self.link_points[link_name] = sphere.sample_surface(
-                    int(points_per_sphere * radius ** 2)
+                    int(surface_scalar * radius ** 2)
                 )
 
     def sample(self, config, n):
