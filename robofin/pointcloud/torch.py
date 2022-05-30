@@ -168,6 +168,8 @@ class FrankaSampler:
         fk = self.robot.visual_geometry_fk_batch(default_cfg)
         eff_link_names = ["panda_hand", "panda_leftfinger", "panda_rightfinger"]
 
+        # This logic could break--really need a way to make sure that the
+        # ordering is correct
         values = [
             list(fk.values())[idx]
             for idx, l in enumerate(self.links)
@@ -180,7 +182,14 @@ class FrankaSampler:
         gripper_T_hand = torch.as_tensor(
             FrankaRobot.EFF_T_LIST[("panda_hand", "right_gripper")].inverse.matrix
         ).type_as(poses)
-        right_gripper_transform = gripper_T_hand.unsqueeze(0) @ values[0].inverse()
+        # Could just invert the matrix, but matrix inversion is not implemented for half-types
+        inverse_hand_transform = torch.zeros_like(values[0])
+        inverse_hand_transform[:, -1, -1] = 1
+        inverse_hand_transform[:, :3, :3] = values[0][:, :3, :3].transpose(1, 2)
+        inverse_hand_transform[:, :3, -1] = -torch.matmul(
+            inverse_hand_transform[:, :3, :3], values[0][:, :3, -1].unsqueeze(-1)
+        ).squeeze(-1)
+        right_gripper_transform = gripper_T_hand.unsqueeze(0) @ inverse_hand_transform
         for idx, l in enumerate(end_effector_links):
             fk_transforms[l.name] = values[idx]
             pc = transform_pointcloud(
