@@ -7,6 +7,7 @@ from geometrout.transform import SE3
 
 from robofin.robots import FrankaRobot, FrankaGripper
 from robofin.pointcloud.numpy import transform_pointcloud
+import math
 
 
 class BulletRobot:
@@ -70,7 +71,41 @@ class BulletRobot:
             )
         return frames
 
-    def in_collision(self, obstacles, check_self=False):
+    def closest_distance_to_self(self, max_radius):
+        contacts = p.getClosestPoints(
+            self.id, self.id, max_radius, physicsClientId=self.clid
+        )
+        # Manually filter out fixed connections that shouldn't be considered
+        # TODO fix this somehow
+        filtered = []
+        for c in contacts:
+            # A link is always in collision with itself and its neighbors
+            if abs(c[3] - c[4]) <= 1:
+                continue
+            # panda_link8 just transforms the origin
+            if c[3] == 6 and c[4] == 8:
+                continue
+            if c[3] == 8 and c[4] == 6:
+                continue
+            if c[3] > 8 or c[4] > 8:
+                continue
+            filtered.append(c)
+        if len(filtered):
+            return min([x[8] for x in filtered])
+        return None
+
+    def closest_distance(self, obstacles, max_radius):
+        distances = []
+        for id in obstacles:
+            closest_points = p.getClosestPoints(
+                self.id, id, max_radius, physicsClientId=self.clid
+            )
+            distances.append([x[8] for x in closest_points])
+        if len(distances):
+            return min(distances)
+        return None
+
+    def in_collision(self, obstacles, radius=0.0, check_self=False):
         """
         Checks whether the robot is in collision with the environment
 
@@ -78,12 +113,23 @@ class BulletRobot:
         """
         # Step the simulator (only enough for collision detection)
         p.performCollisionDetection(physicsClientId=self.clid)
+        # TODO do some more verification on the contact points
         if check_self:
-            contacts = p.getContactPoints(self.id, self.id, physicsClientId=self.clid)
+            if radius > 0.0:
+                contacts = p.getClosestPoints(
+                    self.id, self.id, radius, physicsClientId=self.clid
+                )
+            else:
+                contacts = p.getContactPoints(
+                    self.id, self.id, physicsClientId=self.clid
+                )
             # Manually filter out fixed connections that shouldn't be considered
             # TODO fix this somehow
             filtered = []
             for c in contacts:
+                # A link is always in collision with itself and its neighbors
+                if abs(c[3] - c[4]) <= 1:
+                    continue
                 # panda_link8 just transforms the origin
                 if c[3] == 6 and c[4] == 8:
                     continue
@@ -97,7 +143,12 @@ class BulletRobot:
 
         # Iterate through all obstacles to check for collisions
         for id in obstacles:
-            contacts = p.getContactPoints(self.id, id, physicsClientId=self.clid)
+            if radius > 0.0:
+                contacts = p.getClosestPoints(
+                    self.id, id, radius, physicsClientId=self.clid
+                )
+            else:
+                contacts = p.getContactPoints(self.id, id, physicsClientId=self.clid)
             if len(contacts) > 0:
                 return True
         return False
@@ -317,8 +368,18 @@ class VisualGripper:
         self.id = self.load(clid)
         self.clid = clid
 
-    def load(self, clid):
-        path = str(Path(__file__).parent / "standalone_meshes" / "open_gripper.obj")
+    def load(self, clid, prismatic=0.025):
+        if math.isclose(prismatic, 0.04):
+            path = str(Path(__file__).parent / "standalone_meshes" / "open_gripper.obj")
+        elif math.isclose(prismatic, 0.025):
+            path = str(
+                Path(__file__).parent / "standalone_meshes" / "half_open_gripper.obj"
+            )
+        else:
+            raise NotImplementedError(
+                "Only prismatic values [0.04, 0.025] currently supported for VisualGripper"
+            )
+
         obstacle_visual_id = p.createVisualShape(
             shapeType=p.GEOM_MESH,
             fileName=path,
@@ -478,8 +539,34 @@ class Bullet:
         self.robots[robot.id] = robot
         return robot
 
-    def in_collision(self, robot, check_self=False):
-        return robot.in_collision(self.obstacle_ids, check_self)
+    def in_collision(self, robot, radius=0.0, check_self=False):
+        return robot.in_collision(self.obstacle_ids, radius, check_self)
+
+    def load_mesh(self, visual_mesh_path, collision_mesh_path=None, color=None):
+        if collision_mesh_path is None:
+            collision_mesh_path = visual_mesh_path
+        if color is None:
+            color = [0.85882353, 0.14117647, 0.60392157, 1]
+        visual_id = p.createVisualShape(
+            shapeType=p.GEOM_MESH,
+            fileName=visual_mesh_path,
+            rgbaColor=color,
+            physicsClientId=self.clid,
+        )
+        collision_id = p.createCollisionShape(
+            shapeType=p.GEOM_MESH,
+            fileName=collision_mesh_path,
+            physicsClientId=self.clid,
+        )
+        obstacle_id = p.createMultiBody(
+            basePosition=[0, 0, 0],
+            baseOrientation=[0, 0, 0, 1],
+            baseVisualShapeIndex=visual_id,
+            baseCollisionShapeIndex=collision_id,
+            physicsClientId=self.clid,
+        )
+        self.obstacle_ids.append(obstacle_id)
+        return obstacle_id
 
     def load_cuboid(self, cuboid, color=None):
         assert isinstance(cuboid, Cuboid)
