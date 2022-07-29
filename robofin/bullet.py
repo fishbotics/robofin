@@ -568,7 +568,7 @@ class Bullet:
         self.obstacle_ids.append(obstacle_id)
         return obstacle_id
 
-    def load_cuboid(self, cuboid, color=None):
+    def load_cuboid(self, cuboid, color=None, visual_only=False):
         assert isinstance(cuboid, Cuboid)
         if color is None:
             color = [0.85882353, 0.14117647, 0.60392157, 1]
@@ -582,22 +582,23 @@ class Bullet:
                 physicsClientId=self.clid,
             )
             kwargs["baseVisualShapeIndex"] = obstacle_visual_id
-        obstacle_collision_id = p.createCollisionShape(
-            shapeType=p.GEOM_BOX,
-            halfExtents=cuboid.half_extents,
-            physicsClientId=self.clid,
-        )
+        if not visual_only:
+            obstacle_collision_id = p.createCollisionShape(
+                shapeType=p.GEOM_BOX,
+                halfExtents=cuboid.half_extents,
+                physicsClientId=self.clid,
+            )
+            kwargs["baseCollisionShapeIndex"] = obstacle_collision_id
         obstacle_id = p.createMultiBody(
             basePosition=cuboid.center,
             baseOrientation=cuboid.pose.so3.xyzw,
-            baseCollisionShapeIndex=obstacle_collision_id,
             physicsClientId=self.clid,
             **kwargs,
         )
         self.obstacle_ids.append(obstacle_id)
         return obstacle_id
 
-    def load_cylinder(self, cylinder, color=None):
+    def load_cylinder(self, cylinder, color=None, visual_only=False):
         assert isinstance(cylinder, Cylinder)
         if color is None:
             color = [0.85882353, 0.14117647, 0.60392157, 1]
@@ -612,23 +613,24 @@ class Bullet:
                 physicsClientId=self.clid,
             )
             kwargs["baseVisualShapeIndex"] = obstacle_visual_id
-        obstacle_collision_id = p.createCollisionShape(
-            shapeType=p.GEOM_CYLINDER,
-            radius=cylinder.radius,
-            height=cylinder.height,
-            physicsClientId=self.clid,
-        )
+        if not visual_only:
+            obstacle_collision_id = p.createCollisionShape(
+                shapeType=p.GEOM_CYLINDER,
+                radius=cylinder.radius,
+                height=cylinder.height,
+                physicsClientId=self.clid,
+            )
+            kwargs["baseCollisionShapeIndex"] = obstacle_collision_id
         obstacle_id = p.createMultiBody(
             basePosition=cylinder.center,
             baseOrientation=cylinder.pose.so3.xyzw,
-            baseCollisionShapeIndex=obstacle_collision_id,
             physicsClientId=self.clid,
             **kwargs,
         )
         self.obstacle_ids.append(obstacle_id)
         return obstacle_id
 
-    def load_sphere(self, sphere, color=None):
+    def load_sphere(self, sphere, color=None, visual_only=False):
         assert isinstance(sphere, Sphere)
         if color is None:
             color = [0.0, 0.0, 0.0, 1.0]
@@ -641,33 +643,36 @@ class Bullet:
                 physicsClientId=self.clid,
             )
             kwargs["baseVisualShapeIndex"] = obstacle_visual_id
-        obstacle_collision_id = p.createCollisionShape(
-            shapeType=p.GEOM_SPHERE,
-            radius=sphere.radius,
-            physicsClientId=self.clid,
-        )
+        if not visual_only:
+            obstacle_collision_id = p.createCollisionShape(
+                shapeType=p.GEOM_SPHERE,
+                radius=sphere.radius,
+                physicsClientId=self.clid,
+            )
+            kwargs["baseCollisionShapeIndex"] = obstacle_collision_id
         obstacle_id = p.createMultiBody(
             basePosition=sphere.center,
-            baseCollisionShapeIndex=obstacle_collision_id,
             physicsClientId=self.clid,
             **kwargs,
         )
         self.obstacle_ids.append(obstacle_id)
         return obstacle_id
 
-    def load_primitives(self, primitives, color=None):
+    def load_primitives(self, primitives, color=None, visual_only=False):
         ids = []
         for prim in primitives:
             if prim.is_zero_volume():
                 continue
             elif isinstance(prim, Cuboid):
-                ids.append(self.load_cuboid(prim, color))
+                ids.append(self.load_cuboid(prim, color, visual_only))
             elif isinstance(prim, Cylinder):
-                ids.append(self.load_cylinder(prim, color))
+                ids.append(self.load_cylinder(prim, color, visual_only))
             elif isinstance(prim, Sphere):
-                ids.append(self.load_sphere(prim, color))
+                ids.append(self.load_sphere(prim, color, visual_only))
             else:
-                raise Exception("Only cuboids and spheres supported as primitives")
+                raise Exception(
+                    "Only cuboids, cylinders, and spheres supported as primitives"
+                )
         return ids
 
     def load_urdf_obstacle(self, path, pose=None):
