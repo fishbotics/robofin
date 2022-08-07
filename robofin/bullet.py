@@ -67,7 +67,7 @@ class BulletRobot:
         for ii, r in enumerate(ret):
             frames[self.link_name(ii)] = SE3(
                 xyz=np.array(r[4]),
-                quat=Quaternion([r[5][3], r[5][0], r[5][1], r[5][2]]),
+                quaternion=Quaternion([r[5][3], r[5][0], r[5][1], r[5][2]]),
             )
         return frames
 
