@@ -435,15 +435,15 @@ class Bullet:
 
     def get_depth_and_segmentation_images(
         self,
-        width,
-        height,
-        fx,
-        fy,
-        cx,
-        cy,
-        near,
-        far,
         camera_T_world,
+        width=640,
+        height=480,
+        fx=616.36529541,
+        fy=616.20294189,
+        cx=310.25881958,
+        cy=310.25881958,
+        near=0.01,
+        far=10,
         scale=True,
     ):
         projection_matrix = (
