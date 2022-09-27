@@ -69,14 +69,16 @@ class FrankaSampler:
         use_cache=False,
         default_prismatic_value=0.025,
         with_base_link=True,
+        max_points=4096,
     ):
         logging.getLogger("trimesh").setLevel("ERROR")
         self.num_fixed_points = num_fixed_points
         self.default_prismatic_value = default_prismatic_value
         self.with_base_link = with_base_link
-        self._init_internal_(device, use_cache)
+        self._init_internal_(device, use_cache, max_points)
 
-    def _init_internal_(self, device, use_cache):
+    def _init_internal_(self, device, use_cache, max_points):
+        self.max_points = max_points
         self.robot = TorchURDF.load(
             FrankaRobot.urdf, lazy_load_meshes=True, device=device
         )
@@ -99,7 +101,7 @@ class FrankaSampler:
             num_points[0] += self.num_fixed_points - np.sum(num_points)
             assert np.sum(num_points) == self.num_fixed_points
         else:
-            num_points = np.round(4096 * np.array(areas) / np.sum(areas))
+            num_points = np.round(max_points * np.array(areas) / np.sum(areas))
         self.points = {}
         for ii in range(len(meshes)):
             pc = trimesh.sample.sample_surface(meshes[ii], int(num_points[ii]))[0]
@@ -121,10 +123,12 @@ class FrankaSampler:
         if self.num_fixed_points is not None:
             return (
                 FrankaRobot.pointcloud_cache
-                / f"fixed_point_cloud_{self.num_fixed_points}.npy"
+                / f"fixed_point_cloud_{self.num_fixed_points}_{self.max_points}.npy"
             )
         else:
-            return FrankaRobot.pointcloud_cache / "full_point_cloud.npy"
+            return (
+                FrankaRobot.pointcloud_cache / f"full_point_cloud_{self.max_points}.npy"
+            )
 
     def _init_from_cache_(self, device):
         file_name = self._get_cache_file_name_()
@@ -298,7 +302,7 @@ class FrankaCollisionSampler:
 
         total_points = 10000
         surface_scalar_sum = sum(
-            [sum([s.radius ** 2 for s in v]) for v in all_spheres.values()]
+            [sum([s.radius**2 for s in v]) for v in all_spheres.values()]
         )
         surface_scalar = total_points / surface_scalar_sum
         self.link_points = {}
@@ -306,7 +310,7 @@ class FrankaCollisionSampler:
             self.link_points[link_name] = torch.as_tensor(
                 np.concatenate(
                     [
-                        s.sample_surface(int(surface_scalar * s.radius ** 2))
+                        s.sample_surface(int(surface_scalar * s.radius**2))
                         for s in spheres
                     ],
                     axis=0,
