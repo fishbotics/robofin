@@ -8,6 +8,7 @@ from geometrout.transform import SE3
 from robofin.robots import FrankaRobot, FrankaGripper
 from robofin.pointcloud.numpy import transform_pointcloud
 import math
+import trimesh
 
 
 class BulletRobot:
@@ -105,24 +106,17 @@ class BulletRobot:
             return min(distances)
         return None
 
-    def in_collision(self, obstacles, radius=0.0, check_self=False):
+    def in_collision(self, obstacles, radius=0.0, check_self=False, ignore_base=True):
         """
         Checks whether the robot is in collision with the environment
 
         :return: Boolean
         """
         # Step the simulator (only enough for collision detection)
-        p.performCollisionDetection(physicsClientId=self.clid)
-        # TODO do some more verification on the contact points
         if check_self:
-            if radius > 0.0:
-                contacts = p.getClosestPoints(
-                    self.id, self.id, radius, physicsClientId=self.clid
-                )
-            else:
-                contacts = p.getContactPoints(
-                    self.id, self.id, physicsClientId=self.clid
-                )
+            contacts = p.getClosestPoints(
+                self.id, self.id, radius, physicsClientId=self.clid
+            )
             # Manually filter out fixed connections that shouldn't be considered
             # TODO fix this somehow
             filtered = []
@@ -143,12 +137,11 @@ class BulletRobot:
 
         # Iterate through all obstacles to check for collisions
         for id in obstacles:
-            if radius > 0.0:
-                contacts = p.getClosestPoints(
-                    self.id, id, radius, physicsClientId=self.clid
-                )
-            else:
-                contacts = p.getContactPoints(self.id, id, physicsClientId=self.clid)
+            contacts = p.getClosestPoints(
+                self.id, id, radius, physicsClientId=self.clid
+            )
+            if ignore_base:
+                contacts = [c for c in contacts if c[3] > -1]
             if len(contacts) > 0:
                 return True
         return False
@@ -364,17 +357,15 @@ class BulletFrankaGripper(BulletRobot):
 
 
 class VisualGripper:
-    def __init__(self, clid):
-        self.id = self.load(clid)
+    def __init__(self, clid, **kwargs):
+        self.id = self.load(clid, **kwargs)
         self.clid = clid
 
     def load(self, clid, prismatic=0.025):
         if math.isclose(prismatic, 0.04):
-            path = str(Path(__file__).parent / "standalone_meshes" / "open_gripper.obj")
+            path = FrankaGripper.fully_open_mesh
         elif math.isclose(prismatic, 0.025):
-            path = str(
-                Path(__file__).parent / "standalone_meshes" / "half_open_gripper.obj"
-            )
+            path = FrankaGripper.half_open_mesh
         else:
             raise NotImplementedError(
                 "Only prismatic values [0.04, 0.025] currently supported for VisualGripper"
@@ -383,7 +374,7 @@ class VisualGripper:
         obstacle_visual_id = p.createVisualShape(
             shapeType=p.GEOM_MESH,
             fileName=path,
-            rgbaColor=[1, 1, 1, 1],
+            # rgbaColor=[0, 1.0, 0, 1],
             physicsClientId=clid,
         )
         return p.createMultiBody(
@@ -412,6 +403,7 @@ class Bullet:
             self.clid = p.connect(p.DIRECT)
         self.robots = {}
         self.obstacle_ids = []
+        self.poses = []
 
     def __del__(self):
         """
@@ -419,7 +411,120 @@ class Bullet:
         """
         p.disconnect(self.clid)
 
+    def visualize_pose(self, pose):
+        root_path = Path("/tmp")
+
+        target_ids = []
+        x_mesh_path = root_path / "target_x.obj"
+        if not x_mesh_path.exists():
+            x_transform = np.array(
+                [[0, 0, 1, 0.05], [1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 1]]
+            )
+            x_axis_mesh = trimesh.creation.cylinder(
+                radius=0.005,
+                height=0.1,
+                transform=x_transform,
+            )
+            with open(x_mesh_path, "w") as f:
+                f.write(
+                    trimesh.exchange.obj.export_obj(x_axis_mesh, include_color=True)
+                )
+        obstacle_visual_id = p.createVisualShape(
+            shapeType=p.GEOM_MESH,
+            fileName=str(x_mesh_path),
+            physicsClientId=self.clid,
+            rgbaColor=[1, 0, 0, 1],
+        )
+        target_ids.append(
+            p.createMultiBody(
+                basePosition=pose.xyz,
+                baseOrientation=pose.so3.xyzw,
+                baseVisualShapeIndex=obstacle_visual_id,
+                physicsClientId=self.clid,
+            )
+        )
+
+        y_mesh_path = root_path / "target_y.obj"
+        if not y_mesh_path.exists():
+            y_transform = np.array(
+                [[0, 1, 0, 0], [0, 0, 1, 0.05], [1, 0, 0, 0], [0, 0, 0, 1]]
+            )
+            y_axis_mesh = trimesh.creation.cylinder(
+                radius=0.005,
+                height=0.1,
+                transform=y_transform,
+            )
+            with open(y_mesh_path, "w") as f:
+                f.write(
+                    trimesh.exchange.obj.export_obj(y_axis_mesh, include_color=True)
+                )
+        obstacle_visual_id = p.createVisualShape(
+            shapeType=p.GEOM_MESH,
+            fileName=str(y_mesh_path),
+            physicsClientId=self.clid,
+            rgbaColor=[0, 1, 0, 1],
+        )
+        target_ids.append(
+            p.createMultiBody(
+                basePosition=pose.xyz,
+                baseOrientation=pose.so3.xyzw,
+                baseVisualShapeIndex=obstacle_visual_id,
+                physicsClientId=self.clid,
+            )
+        )
+        z_mesh_path = root_path / "target_z.obj"
+        if not z_mesh_path.exists():
+            z_transform = np.array(
+                [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0.05], [0, 0, 0, 1]]
+            )
+            z_axis_mesh = trimesh.creation.cylinder(
+                radius=0.005, height=0.1, transform=z_transform
+            )
+            with open(z_mesh_path, "w") as f:
+                f.write(
+                    trimesh.exchange.obj.export_obj(z_axis_mesh, include_color=True)
+                )
+        obstacle_visual_id = p.createVisualShape(
+            shapeType=p.GEOM_MESH,
+            fileName=str(z_mesh_path),
+            physicsClientId=self.clid,
+            rgbaColor=[0, 0, 1, 1],
+        )
+        target_ids.append(
+            p.createMultiBody(
+                basePosition=pose.xyz,
+                baseOrientation=pose.so3.xyzw,
+                baseVisualShapeIndex=obstacle_visual_id,
+                physicsClientId=self.clid,
+            )
+        )
+        self.poses.append(target_ids)
+        return target_ids
+
     def set_camera_position(self, yaw, pitch, distance, target):
+        p.resetDebugVisualizerCamera(
+            distance, yaw, pitch, target, physicsClientId=self.clid
+        )
+
+    def set_camera_position_from_matrix(self, pose):
+        distance = pose.matrix[2, 3] / pose.matrix[2, 2]
+        # distance = 5
+        target = tuple((pose.matrix @ np.array([0, 0, -distance, 1]))[:3])
+
+        # Calculations for signed angles come from here https://stackoverflow.com/questions/5188561/signed-angle-between-two-3d-vectors-with-same-origin-within-the-same-plane
+        # Have to get the angle between the camera's x axis and the world x axis
+        v1 = (pose.matrix @ np.array([1, 0, 0, 1]))[:3] - pose._xyz
+        v2 = np.array([1, 0, 0])
+        vn = np.cross(v1, v2)
+        vn = vn / np.linalg.norm(vn)
+        yaw = np.degrees(np.arctan2(np.dot(np.cross(v1, v2), vn), np.dot(v1, v2)))
+
+        # Have to get the
+        v1 = (pose.matrix @ np.array([0, 1, 0, 1]))[:3] - pose._xyz
+        v2 = np.array([0, 0, 1])
+        vn = np.cross(v1, v2)
+        vn = vn / np.linalg.norm(vn)
+        pitch = np.degrees(np.arctan2(np.dot(np.cross(v2, v1), vn), np.dot(v1, v2)))
         p.resetDebugVisualizerCamera(
             distance, yaw, pitch, target, physicsClientId=self.clid
         )
@@ -494,6 +599,7 @@ class Bullet:
     ):
         assert not (keep_robot is not None and remove_robot is not None)
         depth_image, segmentation = self.get_depth_and_segmentation_images(
+            camera_T_world,
             width,
             height,
             fx,
@@ -502,7 +608,6 @@ class Bullet:
             cy,
             near,
             far * 2,
-            camera_T_world,
         )
         # Remove all points that are too far away
         depth_image[depth_image > far] = 0.0
@@ -520,7 +625,9 @@ class Bullet:
         ).T
         if finite_depth:
             pc = pc[np.isfinite(pc[:, 0]), :]
-        capture_camera = camera_T_world.inverse @ SE3(xyz=[0, 0, 0], quat=[0, 1, 0, 0])
+        capture_camera = camera_T_world.inverse @ SE3(
+            xyz=[0, 0, 0], quaternion=[0, 1, 0, 0]
+        )
         pc = pc[~np.all(pc == 0, axis=1)]
         transform_pointcloud(pc, capture_camera.matrix, in_place=True)
         return pc
@@ -533,14 +640,14 @@ class Bullet:
             robot = BulletFranka(self.clid, hd, **kwargs)
         elif robot_type == FrankaGripper:
             if collision_free:
-                robot = VisualGripper(self.clid)
+                robot = VisualGripper(self.clid, **kwargs)
             else:
                 robot = BulletFrankaGripper(self.clid, **kwargs)
         self.robots[robot.id] = robot
         return robot
 
-    def in_collision(self, robot, radius=0.0, check_self=False):
-        return robot.in_collision(self.obstacle_ids, radius, check_self)
+    def in_collision(self, robot, radius=0.0, check_self=False, **kwargs):
+        return robot.in_collision(self.obstacle_ids, radius, check_self, **kwargs)
 
     def load_mesh(self, visual_mesh_path, collision_mesh_path=None, color=None):
         if collision_mesh_path is None:
@@ -711,6 +818,12 @@ class Bullet:
             if id is not None:
                 p.removeBody(id, physicsClientId=self.clid)
         self.obstacle_ids = []
+
+    def clear_all_poses(self):
+        for pose in self.poses:
+            for id in pose:
+                p.removeBody(id, physicsClientId=self.clid)
+        self.poses = []
 
 
 class BulletController(Bullet):
