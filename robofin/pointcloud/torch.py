@@ -209,7 +209,7 @@ class FrankaSampler:
             return pc
         return pc[:, np.random.choice(pc.shape[1], num_points, replace=False), :]
 
-    def sample(self, config, num_points=None):
+    def sample(self, config, num_points=None, all_points=False, only_eff=False):
         """
         Samples points from the surface of the robot by calling fk.
 
@@ -219,13 +219,17 @@ class FrankaSampler:
             actuated joints.
             For example, if using the Franka, M is 9
         num_points : Number of points desired
+        all_points : Simply return all points
+        only_eff : Whether to only return points on the end effector
 
         Returns
         -------
         N x num points x 3 pointcloud of robot points
 
         """
-        assert bool(self.num_fixed_points is None) ^ bool(num_points is None)
+        if self.num_fixed_points is not None:
+            all_points = True
+        assert bool(all_points is False) ^ bool(num_points is None)
         if config.ndim == 1:
             config = config.unsqueeze(0)
         cfg = torch.cat(
@@ -242,7 +246,13 @@ class FrankaSampler:
         fk_transforms = {}
         fk_points = []
         for idx, l in enumerate(self.links):
-            if l.name == "panda_link0" and not self.with_base_link:
+            if only_eff and l.name not in [
+                "panda_hand",
+                "panda_leftfinger",
+                "panda_rightfinger",
+            ]:
+                continue
+            if not self.with_base_link and l.name == "panda_link0":
                 continue
             fk_transforms[l.name] = values[idx]
             pc = transform_pointcloud(
