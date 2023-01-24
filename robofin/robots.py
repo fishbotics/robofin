@@ -297,7 +297,8 @@ class FrankaRealRobot(FrankaRobot):
             (-2.8973, 2.8973),
             (-3.0718, -0.0698),
             (-2.8973, 2.8973),
-            (0.5, 3.75),
+            # (0.5, 3.75), # This is maybe supposed to be the value for Joint 6. Confirm with Bala
+            (0.05, 3.75),
             (-2.8973, 2.8973),
         ]
     )
