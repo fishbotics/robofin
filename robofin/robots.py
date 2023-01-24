@@ -269,12 +269,22 @@ class FrankaRobot:
             raise Exception(f"IK failed with {pose}")
 
     @staticmethod
-    def collision_free_ik(sim, sim_franka, pose, frame="right_gripper", retries=1000):
+    def collision_free_ik(
+        sim,
+        sim_franka,
+        pose,
+        frame="right_gripper",
+        retries=1000,
+        bad_state_callback=lambda x: False,
+    ):
         for i in range(retries + 1):
             samples = FrankaRobot.random_ik(pose, "right_gripper")
             for sample in samples:
                 sim_franka.marionette(sample)
-                if not sim.in_collision(sim_franka, check_self=True):
+                if not (
+                    sim.in_collision(sim_franka, check_self=True)
+                    or bad_state_callback(sample)
+                ):
                     return sample
         return None
 
@@ -287,7 +297,7 @@ class FrankaRealRobot(FrankaRobot):
             (-2.8973, 2.8973),
             (-3.0718, -0.0698),
             (-2.8973, 2.8973),
-            (0.05, 3.75),
+            (0.5, 3.75),
             (-2.8973, 2.8973),
         ]
     )
@@ -410,6 +420,12 @@ class FrankaGripper:
     JOINT_LIMITS = None
     DOF = 6
     urdf = str(Path(__file__).parent / "urdf" / "panda_hand" / "panda.urdf")
+    fully_open_mesh = str(
+        Path(__file__).parent / "standalone_meshes" / "open_gripper.obj"
+    )
+    half_open_mesh = str(
+        Path(__file__).parent / "standalone_meshes" / "half_open_gripper.obj"
+    )
 
     @staticmethod
     def random_configuration():
