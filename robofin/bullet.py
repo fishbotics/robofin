@@ -101,11 +101,9 @@ class BulletRobot:
             closest_points = p.getClosestPoints(
                 self.id, id, max_radius, physicsClientId=self.clid
             )
-            if len(closest_points) == 0:
-                continue
             if ignore_base:
                 closest_points = [c for c in closest_points if c[3] > -1]
-            distances.append([x[8] for x in closest_points])
+            distances.extend([x[8] for x in closest_points])
         if len(distances):
             return min(distances)
         return None
