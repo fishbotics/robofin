@@ -95,12 +95,16 @@ class BulletRobot:
             return min([x[8] for x in filtered])
         return None
 
-    def closest_distance(self, obstacles, max_radius):
+    def closest_distance(self, obstacles, max_radius, ignore_base=True):
         distances = []
         for id in obstacles:
             closest_points = p.getClosestPoints(
                 self.id, id, max_radius, physicsClientId=self.clid
             )
+            if len(closest_points) == 0:
+                continue
+            if ignore_base:
+                closest_points = [c for c in closest_points if c[3] > -1]
             distances.append([x[8] for x in closest_points])
         if len(distances):
             return min(distances)
@@ -112,39 +116,7 @@ class BulletRobot:
 
         :return: Boolean
         """
-        # Step the simulator (only enough for collision detection)
-        if check_self:
-            contacts = p.getClosestPoints(
-                self.id, self.id, radius, physicsClientId=self.clid
-            )
-            # Manually filter out fixed connections that shouldn't be considered
-            # TODO fix this somehow
-            filtered = []
-            for c in contacts:
-                # A link is always in collision with itself and its neighbors
-                if abs(c[3] - c[4]) <= 1:
-                    continue
-                # panda_link8 just transforms the origin
-                if c[3] == 6 and c[4] == 8:
-                    continue
-                if c[3] == 8 and c[4] == 6:
-                    continue
-                if c[3] > 8 or c[4] > 8:
-                    continue
-                filtered.append(c)
-            if len(filtered) > 0:
-                return True
-
-        # Iterate through all obstacles to check for collisions
-        for id in obstacles:
-            contacts = p.getClosestPoints(
-                self.id, id, radius, physicsClientId=self.clid
-            )
-            if ignore_base:
-                contacts = [c for c in contacts if c[3] > -1]
-            if len(contacts) > 0:
-                return True
-        return False
+        raise NotImplementedError
 
     def get_collision_points(self, obstacles, check_self=False):
         """
@@ -303,6 +275,46 @@ class BulletFranka(BulletRobot):
             physicsClientId=self.clid,
         )
 
+    def in_collision(self, obstacles, radius=0.0, check_self=False, ignore_base=True):
+        """
+        Checks whether the robot is in collision with the environment
+
+        :return: Boolean
+        """
+        # Step the simulator (only enough for collision detection)
+        if check_self:
+            contacts = p.getClosestPoints(
+                self.id, self.id, radius, physicsClientId=self.clid
+            )
+            # Manually filter out fixed connections that shouldn't be considered
+            # TODO fix this somehow
+            filtered = []
+            for c in contacts:
+                # A link is always in collision with itself and its neighbors
+                if abs(c[3] - c[4]) <= 1:
+                    continue
+                # panda_link8 just transforms the origin
+                if c[3] == 6 and c[4] == 8:
+                    continue
+                if c[3] == 8 and c[4] == 6:
+                    continue
+                if c[3] > 8 or c[4] > 8:
+                    continue
+                filtered.append(c)
+            if len(filtered) > 0:
+                return True
+
+        # Iterate through all obstacles to check for collisions
+        for id in obstacles:
+            contacts = p.getClosestPoints(
+                self.id, id, radius, physicsClientId=self.clid
+            )
+            if ignore_base:
+                contacts = [c for c in contacts if c[3] > -1]
+            if len(contacts) > 0:
+                return True
+        return False
+
 
 class BulletFrankaGripper(BulletRobot):
     robot_type = FrankaGripper
@@ -354,6 +366,42 @@ class BulletFrankaGripper(BulletRobot):
         p.resetJointState(
             self.id, 6, self.default_prismatic_value, physicsClientId=self.clid
         )
+
+    def in_collision(self, obstacles, radius=0.0, check_self=False):
+        """
+        Checks whether the robot is in collision with the environment
+
+        :return: Boolean
+        """
+        # Step the simulator (only enough for collision detection)
+        if check_self:
+            contacts = p.getClosestPoints(
+                self.id, self.id, radius, physicsClientId=self.clid
+            )
+            # Manually filter out fixed connections that shouldn't be considered
+            # TODO fix this somehow
+            filtered = []
+            for c in contacts:
+                # A link is always in collision with itself and its neighbors
+                if abs(c[3] - c[4]) <= 1:
+                    continue
+                # panda_link8 just transforms the origin
+                if c[3] == 6 and c[4] == 4:
+                    continue
+                if c[3] == 4 and c[4] == 6:
+                    continue
+                filtered.append(c)
+            if len(filtered) > 0:
+                return True
+
+        # Iterate through all obstacles to check for collisions
+        for id in obstacles:
+            contacts = p.getClosestPoints(
+                self.id, id, radius, physicsClientId=self.clid
+            )
+            if len(contacts) > 0:
+                return True
+        return False
 
 
 class VisualGripper:
