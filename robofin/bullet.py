@@ -2,8 +2,7 @@ from pathlib import Path
 
 import numpy as np
 import pybullet as p
-from geometrout.primitive import Cuboid, Sphere, Cylinder
-from geometrout.transform import SE3
+from geometrout import Cuboid, Sphere, Cylinder, SE3
 
 from robofin.robots import FrankaRobot, FrankaGripper
 from robofin.pointcloud.numpy import transform_pointcloud
@@ -730,7 +729,7 @@ class Bullet:
         if self.use_gui:
             obstacle_visual_id = p.createVisualShape(
                 shapeType=p.GEOM_BOX,
-                halfExtents=cuboid.half_extents,
+                halfExtents=cuboid.half_extents.tolist(),
                 rgbaColor=color,
                 physicsClientId=self.clid,
             )
@@ -738,12 +737,12 @@ class Bullet:
         if not visual_only:
             obstacle_collision_id = p.createCollisionShape(
                 shapeType=p.GEOM_BOX,
-                halfExtents=cuboid.half_extents,
+                halfExtents=cuboid.half_extents.tolist(),
                 physicsClientId=self.clid,
             )
             kwargs["baseCollisionShapeIndex"] = obstacle_collision_id
         obstacle_id = p.createMultiBody(
-            basePosition=cuboid.center,
+            basePosition=cuboid.center.tolist(),
             baseOrientation=cuboid.pose.so3.xyzw,
             physicsClientId=self.clid,
             **kwargs,
@@ -775,7 +774,7 @@ class Bullet:
             )
             kwargs["baseCollisionShapeIndex"] = obstacle_collision_id
         obstacle_id = p.createMultiBody(
-            basePosition=cylinder.center,
+            basePosition=cylinder.center.tolist(),
             baseOrientation=cylinder.pose.so3.xyzw,
             physicsClientId=self.clid,
             **kwargs,
