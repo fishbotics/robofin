@@ -558,14 +558,14 @@ class Bullet:
 
         # Calculations for signed angles come from here https://stackoverflow.com/questions/5188561/signed-angle-between-two-3d-vectors-with-same-origin-within-the-same-plane
         # Have to get the angle between the camera's x axis and the world x axis
-        v1 = (pose.matrix @ np.array([1, 0, 0, 1]))[:3] - pose._xyz
+        v1 = (pose.matrix @ np.array([1, 0, 0, 1]))[:3] - pose.pos
         v2 = np.array([1, 0, 0])
         vn = np.cross(v1, v2)
         vn = vn / np.linalg.norm(vn)
         yaw = np.degrees(np.arctan2(np.dot(np.cross(v1, v2), vn), np.dot(v1, v2)))
 
         # Have to get the
-        v1 = (pose.matrix @ np.array([0, 1, 0, 1]))[:3] - pose._xyz
+        v1 = (pose.matrix @ np.array([0, 1, 0, 1]))[:3] - pose.pos
         v2 = np.array([0, 0, 1])
         vn = np.cross(v1, v2)
         vn = vn / np.linalg.norm(vn)
