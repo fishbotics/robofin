@@ -6,6 +6,7 @@ import urchin
 from robofin.robots import FrankaRobot
 import trimesh
 from pathlib import Path
+from enum import IntEnum
 
 
 @numba.jit(nopython=True)
@@ -24,6 +25,19 @@ def axis_angle(axis, angle):
     )
 
     return M
+
+
+FrankaEefLinks = IntEnum(
+    "FrankaEefLinks",
+    [
+        "panda_hand",
+        "panda_grasptarget",
+        "right_gripper",
+        "panda_leftfinger",
+        "panda_rightfinger",
+    ],
+    start=0,
+)
 
 
 @numba.jit(nopython=True)
@@ -112,6 +126,17 @@ def franka_eef_link_fk(
     return poses
 
 
+FrankaEefVisuals = IntEnum(
+    "FrankaEefVisuals",
+    [
+        "panda_hand",
+        "panda_leftfinger",
+        "panda_rightfinger",
+    ],
+    start=0,
+)
+
+
 @numba.jit(nopython=True)
 def franka_visual_eef_fk(
     prismatic_joint: float, base_pose: np.ndarray = np.eye(4)
@@ -141,6 +166,28 @@ def franka_visual_eef_fk(
         ),
     )
     return poses
+
+
+FrankaArmLinks = IntEnum(
+    "FrankaArmLinks",
+    [
+        "panda_link0",
+        "panda_link1",
+        "panda_link2",
+        "panda_link3",
+        "panda_link4",
+        "panda_link5",
+        "panda_link6",
+        "panda_link7",
+        "panda_link8",
+        "panda_hand",
+        "panda_grasptarget",
+        "right_gripper",
+        "panda_leftfinger",
+        "panda_rightfinger",
+    ],
+    start=0,
+)
 
 
 @numba.jit(nopython=True)
@@ -299,6 +346,25 @@ def franka_arm_link_fk(
     poses[13, :, :] = np.dot(poses[9], np.dot(joint_origins[12], t_rightfinger))
 
     return poses
+
+
+FrankaArmVisuals = IntEnum(
+    "FrankaArmVisuals",
+    [
+        "panda_link0",
+        "panda_link1",
+        "panda_link2",
+        "panda_link3",
+        "panda_link4",
+        "panda_link5",
+        "panda_link6",
+        "panda_link7",
+        "panda_hand",
+        "panda_leftfinger",
+        "panda_rightfinger",
+    ],
+    start=0,
+)
 
 
 @numba.jit(nopython=True)
