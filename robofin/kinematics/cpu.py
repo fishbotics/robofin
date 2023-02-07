@@ -138,7 +138,7 @@ FrankaEefVisuals = IntEnum(
 
 
 @numba.jit(nopython=True)
-def franka_visual_eef_fk(
+def franka_eef_visual_fk(
     prismatic_joint: float, base_pose: np.ndarray = np.eye(4)
 ) -> np.ndarray:
     """
@@ -155,7 +155,7 @@ def franka_visual_eef_fk(
     poses[0, :, :] = link_fk[1, :, :]
     poses[1, :, :] = link_fk[4, :, :]
     poses[2, :, :] = np.dot(
-        link_fk[5, :, :],
+        np.copy(link_fk[5, :, :]),
         np.array(
             [
                 [-1.0, 0.0, -0.0, 0.0],
@@ -368,7 +368,7 @@ FrankaArmVisuals = IntEnum(
 
 
 @numba.jit(nopython=True)
-def franka_visual_arm_fk(
+def franka_arm_visual_fk(
     cfg: np.ndarray, prismatic_joint: float, base_pose: np.ndarray = np.eye(4)
 ) -> np.ndarray:
     """
@@ -392,7 +392,7 @@ def franka_visual_arm_fk(
     poses[8, :, :] = link_fk[9, :, :]
     poses[9, :, :] = link_fk[12, :, :]
     poses[10, :, :] = np.dot(
-        link_fk[13, :, :],
+        np.copy(link_fk[13, :, :]),
         np.array(
             [
                 [-1.0, 0.0, -0.0, 0.0],
@@ -422,7 +422,7 @@ def sample_points_on_franka_arm(
     panda_leftfinger_points,
     panda_rightfinger_points,
 ):
-    fk = franka_visual_arm_fk(cfg, prismatic_joint)
+    fk = franka_arm_visual_fk(cfg, prismatic_joint)
     all_points = np.concatenate(
         (
             _transform(np.copy(panda_link0_points), fk[0]),
@@ -486,7 +486,7 @@ def sample_points_on_franka_eef(
             "Only right_gripper, panda_hand, and panda_link8 are implemented for eef sampling"
         )
 
-    fk = franka_visual_eef_fk(prismatic_joint, pose)
+    fk = franka_eef_visual_fk(prismatic_joint, pose)
     all_points = np.concatenate(
         (
             _transform(np.copy(panda_hand_points), fk[0]),
