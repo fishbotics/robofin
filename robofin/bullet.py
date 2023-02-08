@@ -66,8 +66,8 @@ class BulletRobot:
         frames = {}
         for ii, r in enumerate(ret):
             frames[self.link_name(ii)] = SE3(
-                xyz=np.array(r[4]),
-                quaternion=Quaternion([r[5][3], r[5][0], r[5][1], r[5][2]]),
+                np.array(r[4]),
+                np.array([r[5][3], r[5][0], r[5][1], r[5][2]]),
             )
         return frames
 
@@ -328,8 +328,8 @@ class BulletFrankaGripper(BulletRobot):
         # TODO maybe there is some way to cache these transforms from the urdf
         # instead of hardcoding them
         if frame == "right_gripper":
-            transform = SE3(
-                matrix=np.array(
+            transform = SE3.from_matrix(
+                np.array(
                     [
                         [-0.7071067811865475, 0.7071067811865475, 0, 0],
                         [-0.7071067811865475, -0.7071067811865475, 0, 0],
@@ -338,10 +338,10 @@ class BulletFrankaGripper(BulletRobot):
                     ]
                 )
             )
-            state = state @ transform
+            state = state * transform
         elif frame == "panda_grasptarget":
-            transform = SE3(
-                matrix=np.array(
+            transform = SE3.from_matrix(
+                np.array(
                     [
                         [0.7071067811865475, 0.7071067811865475, 0, 0],
                         [0.7071067811865475, 0.7071067811865475, 0, 0],
@@ -350,7 +350,7 @@ class BulletFrankaGripper(BulletRobot):
                     ]
                 )
             )
-            state = state @ transform
+            state = state * transform
 
         x, y, z = state.xyz
         p.resetJointState(self.id, 0, x, physicsClientId=self.clid)
@@ -670,8 +670,8 @@ class Bullet:
         ).T
         if finite_depth:
             pc = pc[np.isfinite(pc[:, 0]), :]
-        capture_camera = camera_T_world.inverse @ SE3(
-            xyz=[0, 0, 0], quaternion=[0, 1, 0, 0]
+        capture_camera = camera_T_world.inverse * SE3(
+            np.array([0, 0, 0]), np.array([0, 1, 0, 0])
         )
         pc = pc[~np.all(pc == 0, axis=1)]
         transform_pointcloud(pc, capture_camera.matrix, in_place=True)

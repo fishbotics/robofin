@@ -230,12 +230,12 @@ class FrankaRobot:
         elif eff_frame == "right_gripper":
             return (
                 SE3.from_matrix(mat)
-                @ FrankaRobot.EFF_T_LIST[("panda_link8", "right_gripper")]
+                * FrankaRobot.EFF_T_LIST[("panda_link8", "right_gripper")]
             )
         else:
             return (
                 SE3.from_matrix(mat)
-                @ FrankaRobot.EFF_T_LIST[("panda_link8", "panda_grasptarget")]
+                * FrankaRobot.EFF_T_LIST[("panda_link8", "panda_grasptarget")]
             )
 
     @staticmethod
@@ -252,12 +252,12 @@ class FrankaRobot:
         ), "IK only calculated for a valid end effector frame"
         if eff_frame == "right_gripper":
             pose = (
-                pose @ FrankaRobot.EFF_T_LIST[("panda_link8", "right_gripper")].inverse
+                pose * FrankaRobot.EFF_T_LIST[("panda_link8", "right_gripper")].inverse
             )
         elif eff_frame == "panda_grasptarget":
             pose = (
                 pose
-                @ FrankaRobot.EFF_T_LIST[("panda_link8", "panda_grasptarget")].inverse
+                * FrankaRobot.EFF_T_LIST[("panda_link8", "panda_grasptarget")].inverse
             )
         rot = pose.so3.matrix.tolist()
         pos = pose.xyz
@@ -383,12 +383,12 @@ class FrankaRealRobot(FrankaRobot):
         if eff_frame == "right_gripper":
             pose = (
                 pose
-                @ FrankaRealRobot.EFF_T_LIST[("panda_link8", "right_gripper")].inverse
+                * FrankaRealRobot.EFF_T_LIST[("panda_link8", "right_gripper")].inverse
             )
         elif eff_frame == "panda_grasptarget":
             pose = (
                 pose
-                @ FrankaRealRobot.EFF_T_LIST[
+                * FrankaRealRobot.EFF_T_LIST[
                     ("panda_link8", "panda_grasptarget")
                 ].inverse
             )
