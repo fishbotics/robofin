@@ -9,7 +9,7 @@ from pathlib import Path
 from enum import IntEnum
 
 
-@numba.jit(nopython=True)
+@numba.jit(nopython=True, cache=True)
 def axis_angle(axis, angle):
     sina = np.sin(angle)
     cosa = np.cos(angle)
@@ -40,7 +40,7 @@ FrankaEefLinks = IntEnum(
 )
 
 
-@numba.jit(nopython=True)
+@numba.jit(nopython=True, cache=True)
 def franka_eef_link_fk(
     prismatic_joint: float, base_pose: np.ndarray = np.eye(4)
 ) -> np.ndarray:
@@ -137,7 +137,7 @@ FrankaEefVisuals = IntEnum(
 )
 
 
-@numba.jit(nopython=True)
+@numba.jit(nopython=True, cache=True)
 def franka_eef_visual_fk(
     prismatic_joint: float, base_pose: np.ndarray = np.eye(4)
 ) -> np.ndarray:
@@ -190,7 +190,7 @@ FrankaArmLinks = IntEnum(
 )
 
 
-@numba.jit(nopython=True)
+@numba.jit(nopython=True, cache=True)
 def franka_arm_link_fk(
     cfg: np.ndarray, prismatic_joint: float, base_pose: np.ndarray = np.eye(4)
 ) -> np.ndarray:
@@ -367,7 +367,7 @@ FrankaArmVisuals = IntEnum(
 )
 
 
-@numba.jit(nopython=True)
+@numba.jit(nopython=True, cache=True)
 def franka_arm_visual_fk(
     cfg: np.ndarray, prismatic_joint: float, base_pose: np.ndarray = np.eye(4)
 ) -> np.ndarray:
@@ -405,7 +405,7 @@ def franka_arm_visual_fk(
     return poses
 
 
-@numba.jit(nopython=True)
+@numba.jit(nopython=True, cache=True)
 def sample_points_on_franka_arm(
     cfg,
     prismatic_joint,
@@ -444,7 +444,7 @@ def sample_points_on_franka_arm(
     ]
 
 
-@numba.jit(nopython=True)
+@numba.jit(nopython=True, cache=True)
 def sample_points_on_franka_eef(
     pose,
     prismatic_joint,
