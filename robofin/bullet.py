@@ -436,12 +436,14 @@ class VisualGripper:
 
 
 class Bullet:
-    def __init__(self, gui=False):
+    def __init__(self, gui=False, headless=False):
         """
         :param gui: Whether to use a gui to visualize the environment.
             Only one gui instance allowed
         """
+        assert not (gui and headless), "GUI cannot be turned on for headless mode"
         self.use_gui = gui
+        self.headless = headless
         if self.use_gui:
             self.clid = p.connect(p.GUI)
         else:
@@ -583,7 +585,7 @@ class Bullet:
             "target": params[11],
         }
 
-    def get_depth_and_segmentation_images(
+    def get_camera_images(
         self,
         camera_T_world,
         width=640,
@@ -615,7 +617,7 @@ class Bullet:
             0.0,
         )
         view_matrix = camera_T_world.matrix.T.reshape(16)
-        _, _, _, depth, seg = p.getCameraImage(
+        _, _, rgb, depth, seg = p.getCameraImage(
             width=width,
             height=height,
             viewMatrix=view_matrix,
@@ -625,7 +627,7 @@ class Bullet:
         )
         if scale:
             depth = far * near / (far - (far - near) * depth)
-        return depth, seg
+        return rgb, depth, seg
 
     def get_pointcloud_from_camera(
         self,
@@ -643,7 +645,7 @@ class Bullet:
         finite_depth=True,
     ):
         assert not (keep_robot is not None and remove_robot is not None)
-        depth_image, segmentation = self.get_depth_and_segmentation_images(
+        _, depth_image, segmentation = self.get_camera_images(
             camera_T_world,
             width,
             height,
@@ -726,7 +728,7 @@ class Bullet:
             color = [0.85882353, 0.14117647, 0.60392157, 1]
         assert not cuboid.is_zero_volume(), "Cannot load zero volume cuboid"
         kwargs = {}
-        if self.use_gui:
+        if self.use_gui or self.headless:
             obstacle_visual_id = p.createVisualShape(
                 shapeType=p.GEOM_BOX,
                 halfExtents=cuboid.half_extents.tolist(),
@@ -756,7 +758,7 @@ class Bullet:
             color = [0.85882353, 0.14117647, 0.60392157, 1]
         assert not cylinder.is_zero_volume(), "Cannot load zero volume cylinder"
         kwargs = {}
-        if self.use_gui:
+        if self.use_gui or self.headless:
             obstacle_visual_id = p.createVisualShape(
                 shapeType=p.GEOM_CYLINDER,
                 radius=cylinder.radius,
@@ -787,7 +789,7 @@ class Bullet:
         if color is None:
             color = [0.0, 0.0, 0.0, 1.0]
         kwargs = {}
-        if self.use_gui:
+        if self.use_gui or self.headless:
             obstacle_visual_id = p.createVisualShape(
                 shapeType=p.GEOM_SPHERE,
                 radius=sphere.radius,
