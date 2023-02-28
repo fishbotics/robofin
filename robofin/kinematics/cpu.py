@@ -42,7 +42,7 @@ FrankaEefLinks = IntEnum(
 
 @numba.jit(nopython=True, cache=True)
 def franka_eef_link_fk(
-    prismatic_joint: float, base_pose: np.ndarray = np.eye(4)
+    prismatic_joint: float,  # base_pose: np.ndarray = np.eye(4)
 ) -> np.ndarray:
     """
     A fast Numba-based FK method for the Franka Panda
@@ -105,7 +105,7 @@ def franka_eef_link_fk(
 
     poses = np.zeros((6, 4, 4))
     # panda_link8 is origin
-    poses[0, :, :] = base_pose
+    poses[0, :, :] = np.eye(4)  # base_pose
     # panda_hand is attached via fixed joint to panda_link8
     poses[1, :, :] = np.dot(poses[0], joint_origins[0])
     # panda_grasptarget is attached via fixed joint to panda_hand
@@ -139,7 +139,7 @@ FrankaEefVisuals = IntEnum(
 
 @numba.jit(nopython=True, cache=True)
 def franka_eef_visual_fk(
-    prismatic_joint: float, base_pose: np.ndarray = np.eye(4)
+    prismatic_joint: float,  # base_pose: np.ndarray = np.eye(4)
 ) -> np.ndarray:
     """
     base_pose must be specified in terms of panda_link8
@@ -151,7 +151,7 @@ def franka_eef_visual_fk(
     panda_rightfinger
     """
     poses = np.zeros((3, 4, 4))
-    link_fk = franka_eef_link_fk(prismatic_joint, base_pose)
+    link_fk = franka_eef_link_fk(prismatic_joint)  # , base_pose)
     poses[0, :, :] = link_fk[1, :, :]
     poses[1, :, :] = link_fk[4, :, :]
     poses[2, :, :] = np.dot(
@@ -192,7 +192,8 @@ FrankaArmLinks = IntEnum(
 
 @numba.jit(nopython=True, cache=True)
 def franka_arm_link_fk(
-    cfg: np.ndarray, prismatic_joint: float, base_pose: np.ndarray = np.eye(4)
+    cfg: np.ndarray,
+    prismatic_joint: float,  # base_pose: np.ndarray = np.eye(4)
 ) -> np.ndarray:
     """
     A fast Numba-based FK method for the Franka Panda
@@ -320,7 +321,7 @@ def franka_arm_link_fk(
 
     poses = np.zeros((14, 4, 4))
     # Base link is origin
-    poses[0, :, :] = base_pose
+    poses[0, :, :] = np.eye(4)  # base_pose
     # panda_link0 - panda_link7 have revolute joints in simple chain
     for i in range(7):
         poses[i + 1, :, :] = np.dot(
@@ -369,7 +370,8 @@ FrankaArmVisuals = IntEnum(
 
 @numba.jit(nopython=True, cache=True)
 def franka_arm_visual_fk(
-    cfg: np.ndarray, prismatic_joint: float, base_pose: np.ndarray = np.eye(4)
+    cfg: np.ndarray,
+    prismatic_joint: float,  # base_pose: np.ndarray = np.eye(4)
 ) -> np.ndarray:
     """
     Returns in the following order
@@ -387,7 +389,7 @@ def franka_arm_visual_fk(
     panda_rightfinger
     """
     poses = np.zeros((11, 4, 4))
-    link_fk = franka_arm_link_fk(cfg, prismatic_joint, base_pose)
+    link_fk = franka_arm_link_fk(cfg, prismatic_joint)  # , base_pose)
     poses[:8, :, :] = link_fk[:8, :, :]
     poses[8, :, :] = link_fk[9, :, :]
     poses[9, :, :] = link_fk[12, :, :]
@@ -611,3 +613,12 @@ class FrankaCPUSampler:
             self.points["panda_rightfinger"],
             frame,
         )
+
+
+if __name__ == "__main__":
+    import time
+
+    start = time.time()
+    franka_arm_visual_fk(FrankaRobot.NEUTRAL, 0.025)
+    # franka_arm_link_fk(FrankaRobot.NEUTRAL, 0.025)
+    print(time.time() - start)
