@@ -139,7 +139,8 @@ FrankaEefVisuals = IntEnum(
 
 @numba.jit(nopython=True, cache=True)
 def franka_eef_visual_fk(
-    prismatic_joint: float,  # base_pose: np.ndarray = np.eye(4)
+    prismatic_joint: float,
+    base_pose: np.ndarray,
 ) -> np.ndarray:
     """
     base_pose must be specified in terms of panda_link8
