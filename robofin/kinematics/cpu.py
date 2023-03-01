@@ -482,7 +482,7 @@ def sample_points_on_franka_eef(
             "Only right_gripper, panda_hand, and panda_link8 are implemented for eef sampling"
         )
 
-    fk = franka_eef_visual_fk(prismatic_joint, pose, base_pose=np.eye(4))
+    fk = franka_eef_visual_fk(prismatic_joint, pose)
     all_points = np.concatenate(
         (
             _transform(np.copy(panda_hand_points), fk[0]),
