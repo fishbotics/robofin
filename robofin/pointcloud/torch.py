@@ -202,7 +202,12 @@ class FrankaSampler:
                 (right_gripper_transform @ fk_transforms[l.name]),
                 in_place=True,
             )
-            fk_points.append(pc)
+            fk_points.append(
+                torch.cat(
+                    (pc, idx * torch.ones((pc.size(0), pc.size(1), 1)).type_as(pc)),
+                    dim=-1,
+                )
+            )
         pc = torch.cat(fk_points, dim=1)
         pc = transform_pointcloud(pc.repeat(poses.size(0), 1, 1), poses)
         if num_points is None:
@@ -262,7 +267,12 @@ class FrankaSampler:
                 fk_transforms[l.name],
                 in_place=True,
             )
-            fk_points.append(pc)
+            fk_points.append(
+                torch.cat(
+                    (pc, idx * torch.ones((pc.size(0), pc.size(1), 1)).type_as(pc)),
+                    dim=-1,
+                )
+            )
         pc = torch.cat(fk_points, dim=1)
         if num_points is None:
             return pc
