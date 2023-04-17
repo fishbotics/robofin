@@ -5,6 +5,22 @@ from ikfast_franka_panda import get_fk, get_ik
 import numpy as np
 
 
+def franka_arm_collides(q, prismatic_joint, cooo, primitives):
+    """
+    Checks for a collision--this function is duplicated from robofin.kinematics.collision
+    This duplication is to prevent dependency loops. This file should be refactored to
+    have static robot info in one file (maybe a yaml?) and functions somewhere else.
+    This would prevent the dependency loops and be cleaner
+    """
+    if cooo.has_self_collision(q, prismatic_joint):
+        return True
+    cspheres = cooo.csphere_info(q, prismatic_joint)
+    for p in primitives:
+        if np.any(p.sdf(cspheres.centers) < cspheres.radii):
+            return True
+    return False
+
+
 class FrankaRobot:
     # TODO remove this after making this more general
     JOINT_LIMITS = np.array(
@@ -290,9 +306,10 @@ class FrankaRobot:
 
     @staticmethod
     def collision_free_ik(
-        sim,
-        sim_franka,
         pose,
+        prismatic_joint,
+        cooo,
+        primitives,
         frame="right_gripper",
         retries=1000,
         bad_state_callback=lambda x: False,
@@ -300,9 +317,8 @@ class FrankaRobot:
         for i in range(retries + 1):
             samples = FrankaRobot.random_ik(pose, "right_gripper")
             for sample in samples:
-                sim_franka.marionette(sample)
                 if not (
-                    sim.in_collision(sim_franka, check_self=True)
+                    franka_arm_collides(sample, prismatic_joint, cooo, primitives)
                     or bad_state_callback(sample)
                 ):
                     return sample
@@ -317,8 +333,7 @@ class FrankaRealRobot(FrankaRobot):
             (-2.8973, 2.8973),
             (-3.0718, -0.0698),
             (-2.8973, 2.8973),
-            # (0.5, 3.75), # This is maybe supposed to be the value for Joint 6. Confirm with Bala
-            (0.05, 3.75),
+            (0.5, 3.75),
             (-2.8973, 2.8973),
         ]
     )
@@ -423,15 +438,20 @@ class FrankaRealRobot(FrankaRobot):
 
     @staticmethod
     def collision_free_ik(
-        sim, sim_franka, selfcc, pose, frame="right_gripper", retries=1000
+        pose,
+        prismatic_joint,
+        cooo,
+        primitives,
+        frame="right_gripper",
+        retries=1000,
+        bad_state_callback=lambda x: False,
     ):
         for i in range(retries + 1):
             samples = FrankaRealRobot.random_ik(pose, "right_gripper")
             for sample in samples:
-                sim_franka.marionette(sample)
                 if not (
-                    sim.in_collision(sim_franka, check_self=True)
-                    or selfcc.has_self_collision(sample)
+                    franka_arm_collides(sample, prismatic_joint, cooo, primitives)
+                    or bad_state_callback(sample)
                 ):
                     return sample
         return None
