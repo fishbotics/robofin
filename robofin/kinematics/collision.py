@@ -1,15 +1,13 @@
-from robofin.robots import FrankaRobot
-import numpy as np
 from collections import namedtuple
-from robofin.kinematics.numba import (
-    _transform,
-    FrankaArmLinks,
-    FrankaEefLinks,
-    franka_arm_link_fk,
-    eef_pose_to_link8,
-    franka_eef_link_fk,
-)
-from geometrout import Sphere, SE3
+
+import numpy as np
+from geometrout import SE3, Sphere
+from geometrout.utils import transform_in_place
+
+from robofin.kinematics.numba import (FrankaArmLinks, FrankaEefLinks,
+                                      eef_pose_to_link8, franka_arm_link_fk,
+                                      franka_eef_link_fk)
+from robofin.robots import FrankaRobot
 
 SphereInfo = namedtuple("SphereInfo", "radii centers")
 
@@ -136,7 +134,7 @@ class FrankaCollisionSpheres:
         fk_points = []
         for link_name, centers in self.points:
             fk_points.append(
-                _transform(np.copy(centers), fk[FrankaArmLinks[link_name]])
+                transform_in_place(np.copy(centers), fk[FrankaArmLinks[link_name]])
             )
         transformed_centers = np.concatenate(fk_points, axis=0)
         points_matrix = np.tile(
@@ -158,21 +156,25 @@ class FrankaCollisionSpheres:
             )
         return spheres
 
-    def csphere_info(self, config, prismatic_joint, with_base_link=False):
-        fk = franka_arm_link_fk(config, prismatic_joint, np.eye(4))
+    def csphere_info(
+        self, config, prismatic_joint, base_pose=np.eye(4), with_base_link=False
+    ):
+        fk = franka_arm_link_fk(config, prismatic_joint, base_pose)
         radii = []
         centers = []
         for link_name, info in self.cspheres.items():
             if not with_base_link and link_name == "panda_link0":
                 continue
             centers.append(
-                _transform(np.copy(info.centers), fk[FrankaArmLinks[link_name]])
+                transform_in_place(np.copy(info.centers), fk[FrankaArmLinks[link_name]])
             )
             radii.append(info.radii)
         return SphereInfo(radii=np.concatenate(radii), centers=np.concatenate(centers))
 
-    def collision_spheres(self, config, prismatic_joint, with_base_link=False):
-        info = self.csphere_info(config, prismatic_joint, with_base_link)
+    def collision_spheres(
+        self, config, prismatic_joint, base_pose=np.eye(4), with_base_link=False
+    ):
+        info = self.csphere_info(config, prismatic_joint, base_pose, with_base_link)
         return [Sphere(c, r) for c, r in zip(info.centers, info.radii)]
 
     def eef_csphere_info(self, pose, prismatic_joint, frame):
@@ -192,7 +194,7 @@ class FrankaCollisionSpheres:
         ]:
             info = self.cspheres[link_name]
             centers.append(
-                _transform(np.copy(info.centers), fk[FrankaEefLinks[link_name]])
+                transform_in_place(np.copy(info.centers), fk[FrankaEefLinks[link_name]])
             )
             radii.append(info.radii)
         return SphereInfo(radii=np.concatenate(radii), centers=np.concatenate(centers))

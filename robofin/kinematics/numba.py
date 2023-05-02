@@ -1,7 +1,8 @@
+from enum import IntEnum
+
 import numba
 import numpy as np
-from geometrout.primitive import _transform
-from enum import IntEnum
+from geometrout.utils import transform_in_place
 
 FrankaEefLinks = IntEnum(
     "FrankaEefLinks",
@@ -418,17 +419,17 @@ def get_points_on_franka_arm(
     fk = franka_arm_visual_fk(cfg, prismatic_joint, base_pose=np.eye(4))
     all_points = np.concatenate(
         (
-            label(_transform(np.copy(panda_link0_points), fk[0]), 0.0),
-            label(_transform(np.copy(panda_link1_points), fk[1]), 1.0),
-            label(_transform(np.copy(panda_link2_points), fk[2]), 2.0),
-            label(_transform(np.copy(panda_link3_points), fk[3]), 3.0),
-            label(_transform(np.copy(panda_link4_points), fk[4]), 4.0),
-            label(_transform(np.copy(panda_link5_points), fk[5]), 5.0),
-            label(_transform(np.copy(panda_link6_points), fk[6]), 6.0),
-            label(_transform(np.copy(panda_link7_points), fk[7]), 7.0),
-            label(_transform(np.copy(panda_hand_points), fk[8]), 8.0),
-            label(_transform(np.copy(panda_leftfinger_points), fk[9]), 9.0),
-            label(_transform(np.copy(panda_rightfinger_points), fk[10]), 10.0),
+            label(transform_in_place(np.copy(panda_link0_points), fk[0]), 0.0),
+            label(transform_in_place(np.copy(panda_link1_points), fk[1]), 1.0),
+            label(transform_in_place(np.copy(panda_link2_points), fk[2]), 2.0),
+            label(transform_in_place(np.copy(panda_link3_points), fk[3]), 3.0),
+            label(transform_in_place(np.copy(panda_link4_points), fk[4]), 4.0),
+            label(transform_in_place(np.copy(panda_link5_points), fk[5]), 5.0),
+            label(transform_in_place(np.copy(panda_link6_points), fk[6]), 6.0),
+            label(transform_in_place(np.copy(panda_link7_points), fk[7]), 7.0),
+            label(transform_in_place(np.copy(panda_hand_points), fk[8]), 8.0),
+            label(transform_in_place(np.copy(panda_leftfinger_points), fk[9]), 9.0),
+            label(transform_in_place(np.copy(panda_rightfinger_points), fk[10]), 10.0),
         ),
         axis=0,
     )
@@ -489,9 +490,9 @@ def get_points_on_franka_eef(
     fk = franka_eef_visual_fk(prismatic_joint, pose)
     all_points = np.concatenate(
         (
-            label(_transform(np.copy(panda_hand_points), fk[0]), 0.0),
-            label(_transform(np.copy(panda_leftfinger_points), fk[1]), 1.0),
-            label(_transform(np.copy(panda_rightfinger_points), fk[2]), 2.0),
+            label(transform_in_place(np.copy(panda_hand_points), fk[0]), 0.0),
+            label(transform_in_place(np.copy(panda_leftfinger_points), fk[1]), 1.0),
+            label(transform_in_place(np.copy(panda_rightfinger_points), fk[2]), 2.0),
         ),
         axis=0,
     )
