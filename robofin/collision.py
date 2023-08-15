@@ -2,12 +2,14 @@
 Not sure where to put this function yet, but need it quickly so implementing it here
 Sphere model comes from STORM: https://github.com/NVlabs/storm/blob/e53556b64ca532e836f6bfd50893967f8224980e/content/configs/robot/franka_real_robot.yml
 """
-from urchin import URDF
-from robofin.robots import FrankaRobot
-from robofin.pointcloud.numpy import transform_pointcloud
-from geometrout.primitive import Sphere
 import logging
+
 import numpy as np
+from geometrout.primitive import Sphere
+from urchin import URDF
+
+from robofin.pointcloud.numpy import transform_pointcloud
+from robofin.robots import FrankaRobot
 
 SELF_COLLISION_SPHERES = [
     ("panda_link0", [-0.08, 0.0, 0.05], 0.06),
@@ -74,11 +76,9 @@ SELF_COLLISION_SPHERES = [
 class FrankaSelfCollisionChecker:
     def __init__(
         self,
-        default_prismatic_value=0.025,
     ):
         logging.getLogger("trimesh").setLevel("ERROR")
 
-        self.default_prismatic_value = default_prismatic_value
         self.robot = URDF.load(FrankaRobot.urdf, lazy_load_meshes=True)
         # Set up the center points for calculating the FK position
         link_names = []
@@ -106,22 +106,22 @@ class FrankaSelfCollisionChecker:
                     continue
                 self.collision_matrix[idx1, idx2] = radius1 + radius2
 
-    def spheres(self, config):
+    def spheres(self, config, prismatic_joint):
         cfg = np.ones(8)
         cfg[:7] = config
-        cfg[-1] = self.default_prismatic_value
+        cfg[-1] = prismatic_joint
         fk = self.robot.link_fk(cfg, use_names=True)
         spheres = []
         for link_name, center, radius in SELF_COLLISION_SPHERES:
             spheres.append(Sphere((fk[link_name] @ np.array([*center, 1]))[:3], radius))
         return spheres
 
-    def has_self_collision(self, config):
+    def has_self_collision(self, config, prismatic_joint):
         # Cfg should have 8 dof because the two fingers mirror each other in
         # this urdf
         cfg = np.ones(8)
         cfg[:7] = config
-        cfg[-1] = self.default_prismatic_value
+        cfg[-1] = prismatic_joint
         fk = self.robot.link_fk(cfg, use_names=True)
         fk_points = []
         # TODO this is where you left off
@@ -139,12 +139,12 @@ class FrankaSelfCollisionChecker:
 
 
 class FrankaSelfCollisionSampler(FrankaSelfCollisionChecker):
-    def __init__(self, default_prismatic_value=0.025):
-        super().__init__(default_prismatic_value)
+    def __init__(self):
+        super().__init__()
         self.link_points = {}
         total_points = 10000
         surface_scalar_sum = sum(
-            [radius ** 2 for (_, _, radius) in SELF_COLLISION_SPHERES]
+            [radius**2 for (_, _, radius) in SELF_COLLISION_SPHERES]
         )
         surface_scalar = total_points / surface_scalar_sum
 
@@ -154,19 +154,19 @@ class FrankaSelfCollisionSampler(FrankaSelfCollisionChecker):
                 self.link_points[link_name] = np.concatenate(
                     (
                         self.link_points[link_name],
-                        sphere.sample_surface(int(surface_scalar * radius ** 2)),
+                        sphere.sample_surface(int(surface_scalar * radius**2)),
                     ),
                     axis=0,
                 )
             else:
                 self.link_points[link_name] = sphere.sample_surface(
-                    int(surface_scalar * radius ** 2)
+                    int(surface_scalar * radius**2)
                 )
 
-    def sample(self, config, n):
+    def sample(self, config, prismatic_joint, n):
         cfg = np.ones(8)
         cfg[:7] = config
-        cfg[-1] = self.default_prismatic_value
+        cfg[-1] = prismatic_joint
         fk = self.robot.link_fk(cfg, use_names=True)
         pointcloud = []
         for link_name, centers in self.points:

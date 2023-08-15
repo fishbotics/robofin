@@ -1,11 +1,11 @@
 from pathlib import Path
 
+import numpy as np
 from geometrout import SE3, SO3
 from ikfast_franka_panda import get_fk, get_ik
-import numpy as np
 
 
-def franka_arm_collides(q, prismatic_joint, cooo, primitives):
+def franka_arm_collides(q, prismatic_joint, cooo, primitives, buffer=0.0):
     """
     Checks for a collision--this function is duplicated from robofin.kinematics.collision
     This duplication is to prevent dependency loops. This file should be refactored to
@@ -16,7 +16,7 @@ def franka_arm_collides(q, prismatic_joint, cooo, primitives):
         return True
     cspheres = cooo.csphere_info(q, prismatic_joint)
     for p in primitives:
-        if np.any(p.sdf(cspheres.centers) < cspheres.radii):
+        if np.any(p.sdf(cspheres.centers) < cspheres.radii + buffer):
             return True
     return False
 
@@ -310,6 +310,7 @@ class FrankaRobot:
         prismatic_joint,
         cooo,
         primitives,
+        buffer=0.0,
         frame="right_gripper",
         retries=1000,
         bad_state_callback=lambda x: False,
@@ -318,7 +319,9 @@ class FrankaRobot:
             samples = FrankaRobot.random_ik(pose, "right_gripper")
             for sample in samples:
                 if not (
-                    franka_arm_collides(sample, prismatic_joint, cooo, primitives)
+                    franka_arm_collides(
+                        sample, prismatic_joint, cooo, primitives, buffer
+                    )
                     or bad_state_callback(sample)
                 ):
                     return sample
@@ -442,6 +445,7 @@ class FrankaRealRobot(FrankaRobot):
         prismatic_joint,
         cooo,
         primitives,
+        buffer=0.0,
         frame="right_gripper",
         retries=1000,
         bad_state_callback=lambda x: False,
@@ -450,7 +454,9 @@ class FrankaRealRobot(FrankaRobot):
             samples = FrankaRealRobot.random_ik(pose, "right_gripper")
             for sample in samples:
                 if not (
-                    franka_arm_collides(sample, prismatic_joint, cooo, primitives)
+                    franka_arm_collides(
+                        sample, prismatic_joint, cooo, primitives, buffer
+                    )
                     or bad_state_callback(sample)
                 ):
                     return sample

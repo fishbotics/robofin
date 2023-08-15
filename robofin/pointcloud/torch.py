@@ -1,14 +1,14 @@
-from pathlib import Path
 import logging
+from pathlib import Path
 
-import torch
 import numpy as np
+import torch
 import trimesh
-
-from robofin.torch_urdf import TorchURDF
-from robofin.robots import FrankaRobot
-from robofin.collision import FrankaSelfCollisionSampler as NumpySelfCollisionSampler
 from geometrout.primitive import Sphere
+
+from robofin.collision import FrankaSelfCollisionSampler as NumpySelfCollisionSampler
+from robofin.robots import FrankaRobot
+from robofin.torch_urdf import TorchURDF
 
 
 def transform_pointcloud(pc, transformation_matrix, in_place=True):
@@ -67,13 +67,11 @@ class FrankaSampler:
         device,
         num_fixed_points=None,
         use_cache=False,
-        default_prismatic_value=0.025,
         with_base_link=True,
         max_points=4096,
     ):
         logging.getLogger("trimesh").setLevel("ERROR")
         self.num_fixed_points = num_fixed_points
-        self.default_prismatic_value = default_prismatic_value
         self.with_base_link = with_base_link
         self._init_internal_(device, use_cache, max_points)
 
@@ -145,13 +143,13 @@ class FrankaSampler:
         }
         return True
 
-    def end_effector_pose(self, config, frame="right_gripper"):
+    def end_effector_pose(self, config, prismatic_joint, frame="right_gripper"):
         if config.ndim == 1:
             config = config.unsqueeze(0)
         cfg = torch.cat(
             (
                 config,
-                self.default_prismatic_value
+                prismatic_joint
                 * torch.ones((config.shape[0], 2), device=config.device),
             ),
             dim=1,
@@ -159,7 +157,9 @@ class FrankaSampler:
         fk = self.robot.link_fk_batch(cfg, use_names=True)
         return fk[frame]
 
-    def sample_end_effector(self, poses, num_points, frame="right_gripper"):
+    def sample_end_effector(
+        self, poses, prismatic_joint, num_points, frame="right_gripper"
+    ):
         """
         An internal method--separated so that the public facing method can
         choose whether or not to have gradients
@@ -169,7 +169,7 @@ class FrankaSampler:
         if poses.ndim == 2:
             poses = poses.unsqueeze(0)
         default_cfg = torch.zeros((1, 9), device=poses.device)
-        default_cfg[0, 7:] = self.default_prismatic_value
+        default_cfg[0, 7:] = prismatic_joint
         fk = self.robot.visual_geometry_fk_batch(default_cfg)
         eff_link_names = ["panda_hand", "panda_leftfinger", "panda_rightfinger"]
 
@@ -214,7 +214,9 @@ class FrankaSampler:
             return pc
         return pc[:, np.random.choice(pc.shape[1], num_points, replace=False), :]
 
-    def sample(self, config, num_points=None, all_points=False, only_eff=False):
+    def sample(
+        self, config, prismatic_joint, num_points=None, all_points=False, only_eff=False
+    ):
         """
         Samples points from the surface of the robot by calling fk.
 
@@ -240,7 +242,7 @@ class FrankaSampler:
         cfg = torch.cat(
             (
                 config,
-                self.default_prismatic_value
+                prismatic_joint
                 * torch.ones((config.shape[0], 2), device=config.device),
             ),
             dim=1,
@@ -283,12 +285,10 @@ class FrankaCollisionSampler:
     def __init__(
         self,
         device,
-        default_prismatic_value=0.025,
         with_base_link=True,
         margin=0.0,
     ):
         logging.getLogger("trimesh").setLevel("ERROR")
-        self.default_prismatic_value = default_prismatic_value
         self.robot = TorchURDF.load(
             FrankaRobot.urdf, lazy_load_meshes=True, device=device
         )
@@ -338,13 +338,13 @@ class FrankaCollisionSampler:
                 device=device,
             )
 
-    def sample(self, config, n):
+    def sample(self, config, prismatic_joint, n):
         if config.ndim == 1:
             config = config.unsqueeze(0)
         cfg = torch.cat(
             (
                 config,
-                self.default_prismatic_value
+                prismatic_joint
                 * torch.ones((config.shape[0], 2), device=config.device),
             ),
             dim=1,
@@ -361,13 +361,13 @@ class FrankaCollisionSampler:
         pc = torch.cat(pointcloud, dim=1)
         return pc[:, np.random.choice(pc.shape[1], n, replace=False), :]
 
-    def compute_spheres(self, config):
+    def compute_spheres(self, config, prismatic_joint):
         if config.ndim == 1:
             config = config.unsqueeze(0)
         cfg = torch.cat(
             (
                 config,
-                self.default_prismatic_value
+                prismatic_joint
                 * torch.ones((config.shape[0], 2), device=config.device),
             ),
             dim=1,
@@ -390,22 +390,22 @@ class FrankaCollisionSampler:
 
 
 class FrankaSelfCollisionSampler(NumpySelfCollisionSampler):
-    def __init__(self, device, default_prismatic_value=0.025):
-        super().__init__(default_prismatic_value)
+    def __init__(self, device):
+        super().__init__()
         self.robot = TorchURDF.load(
             FrankaRobot.urdf, lazy_load_meshes=True, device=device
         )
         for k, v in self.link_points.items():
             self.link_points[k] = torch.as_tensor(v, device=device).unsqueeze(0)
 
-    def sample(self, config, n):
+    def sample(self, config, prismatic_joint, n):
         if config.ndim == 1:
             config = config.unsqueeze(0)
         cfg = torch.cat(
             (
                 config,
-                self.default_prismatic_value
-                * torch.ones((config.shape[0], 2), device=config.device),
+                prismatic_joint,
+                *torch.ones((config.shape[0], 2), device=config.device),
             ),
             dim=1,
         )

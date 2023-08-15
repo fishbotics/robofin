@@ -4,9 +4,13 @@ import numpy as np
 from geometrout import SE3, Sphere
 from geometrout.utils import transform_in_place
 
-from robofin.kinematics.numba import (FrankaArmLinks, FrankaEefLinks,
-                                      eef_pose_to_link8, franka_arm_link_fk,
-                                      franka_eef_link_fk)
+from robofin.kinematics.numba import (
+    FrankaArmLinks,
+    FrankaEefLinks,
+    eef_pose_to_link8,
+    franka_arm_link_fk,
+    franka_eef_link_fk,
+)
 from robofin.robots import FrankaRobot
 
 SphereInfo = namedtuple("SphereInfo", "radii centers")
@@ -204,19 +208,21 @@ class FrankaCollisionSpheres:
         return [Sphere(c, r) for c, r in zip(info.centers, info.radii)]
 
 
-def franka_arm_collides(q, prismatic_joint, cooo, primitives):
-    if cooo.has_self_collision(q, prismatic_joint):
+def franka_arm_collides(
+    q, prismatic_joint, cooo, primitives, buffer=0.0, check_self=True
+):
+    if check_self and cooo.has_self_collision(q, prismatic_joint):
         return True
     cspheres = cooo.csphere_info(q, prismatic_joint)
     for p in primitives:
-        if np.any(p.sdf(cspheres.centers) < cspheres.radii):
+        if np.any(p.sdf(cspheres.centers) < cspheres.radii + buffer):
             return True
     return False
 
 
-def franka_eef_collides(pose, prismatic_joint, cooo, primitives, frame):
+def franka_eef_collides(pose, prismatic_joint, cooo, primitives, frame, buffer=0.0):
     cspheres = cooo.eef_csphere_info(pose, prismatic_joint, frame)
     for p in primitives:
-        if np.any(p.sdf(cspheres.centers) < cspheres.radii):
+        if np.any(p.sdf(cspheres.centers) < cspheres.radii + buffer):
             return True
     return False
