@@ -127,7 +127,7 @@ class FrankaSampler:
         # then we should be creating new cache files locally
         if use_cache:
             points_to_save = {}
-            for key in self.points.items():
+            for key in self.points:
                 assert key in self.normals
                 pc = self.points[key].squeeze(0).cpu().numpy()
                 normals = self.normals[key].squeeze(0).cpu().numpy()

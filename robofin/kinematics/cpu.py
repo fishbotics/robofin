@@ -246,6 +246,7 @@ class FrankaCPUSampler:
         num_points = np.round(max_points * np.array(areas) / np.sum(areas))
 
         self.points = {}
+        self.normals = {}
         for ii, mesh in enumerate(meshes):
             pc, face_indices = trimesh.sample.sample_surface(mesh, int(num_points[ii]))
             self.points[self.links[ii].name] = pc
@@ -257,8 +258,8 @@ class FrankaCPUSampler:
 
         if use_cache:
             points_to_save = {}
-            for key in self.points.items():
-                assert key in self.normals
+            for key in self.points:
+                assert key in self.normals, f"{key}"
                 pc = self.points[key]
                 normals = self.normals[key]
                 points_to_save[key] = {"pc": pc, "normals": normals}
