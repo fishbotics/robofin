@@ -1,1 +1,1 @@
-from robofin.__version__ import __version__
+from robofin._version import __version__
