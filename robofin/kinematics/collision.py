@@ -2,7 +2,7 @@ from collections import namedtuple
 
 import numpy as np
 from geometrout import SE3, Sphere
-from geometrout.utils import transform_in_place
+from geometrout.maths import transform_in_place
 
 from robofin.kinematics.numba import (
     FrankaArmLinks,
@@ -220,9 +220,31 @@ def franka_arm_collides(
     return False
 
 
+def franka_arm_collides_fast(
+    q, prismatic_joint, cooo, primitive_arrays, buffer=0.0, check_self=True
+):
+    if check_self and cooo.has_self_collision(q, prismatic_joint):
+        return True
+    cspheres = cooo.csphere_info(q, prismatic_joint)
+    for arr in primitive_arrays:
+        if np.any(arr.scene_sdf(cspheres.centers) < cspheres.radii + buffer):
+            return True
+    return False
+
+
 def franka_eef_collides(pose, prismatic_joint, cooo, primitives, frame, buffer=0.0):
     cspheres = cooo.eef_csphere_info(pose, prismatic_joint, frame)
     for p in primitives:
         if np.any(p.sdf(cspheres.centers) < cspheres.radii + buffer):
+            return True
+    return False
+
+
+def franka_eef_collides_fast(
+    pose, prismatic_joint, cooo, primitive_arrays, frame, buffer=0.0
+):
+    cspheres = cooo.eef_csphere_info(pose, prismatic_joint, frame)
+    for arr in primitive_arrays:
+        if np.any(arr.scene_sdf(cspheres.centers) < cspheres.radii + buffer):
             return True
     return False

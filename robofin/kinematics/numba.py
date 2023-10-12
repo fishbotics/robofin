@@ -2,7 +2,7 @@ from enum import IntEnum
 
 import numba
 import numpy as np
-from geometrout.utils import transform_in_place
+from geometrout.maths import transform_in_place
 
 FrankaEefLinks = IntEnum(
     "FrankaEefLinks",
