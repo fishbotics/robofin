@@ -4,69 +4,220 @@ from pathlib import Path
 import numpy as np
 import torch
 import trimesh
+import urchin
 from geometrout.primitive import Sphere
 
-from robofin.collision import FrankaSelfCollisionSampler as NumpySelfCollisionSampler
-from robofin.robots import FrankaRobot
+from robofin.point_cloud_tools import transform_point_cloud
+from robofin.robot_constants import FrankaConstants
 from robofin.torch_urdf import TorchURDF
 
 
-def transform_pointcloud(pc, transformation_matrix, vector=False, in_place=True):
-    """
+class NumpyFrankaSampler:
+    def __init__(
+        self,
+        num_robot_points=4096,
+        num_eef_points=128,
+        use_cache=True,
+        with_base_link=True,
+    ):
+        logging.getLogger("trimesh").setLevel("ERROR")
+        self.with_base_link = with_base_link
+        self.num_robot_points = num_robot_points
+        self.num_eef_points = num_eef_points
 
-    Parameters
-    ----------
-    pc: A pytorch tensor pointcloud, maybe with some addition dimensions.
-        This should have shape N x [3 + M] where N is the number of points
-        M could be some additional mask dimensions or whatever, but the
-        3 are x-y-z
-    transformation_matrix: A 4x4 homography
-    vector: Whether or not to apply the translation
+        if use_cache and self._init_from_cache_():
+            return
 
-    Returns
-    -------
-    Mutates the pointcloud in place and transforms x, y, z according the homography
+        robot = urchin.URDF.load(FrankaConstants.urdf, lazy_load_meshes=True)
 
-    """
-    assert isinstance(pc, torch.Tensor)
-    assert type(pc) == type(transformation_matrix)
-    assert pc.ndim == transformation_matrix.ndim
-    if pc.ndim == 3:
-        N, M = 1, 2
-    elif pc.ndim == 2:
-        N, M = 0, 1
-    else:
-        raise Exception("Pointcloud must have dimension Nx3 or BxNx3")
-    xyz = pc[..., :3]
-    ones_dim = list(xyz.shape)
-    ones_dim[-1] = 1
-    ones_dim = tuple(ones_dim)
-    if vector:
-        homogeneous_xyz = torch.cat(
-            (xyz, torch.zeros(ones_dim, device=xyz.device)), dim=M
+        # If we made it all the way here with the use_cache flag set,
+        # then we should be creating new cache files locally
+        link_points, link_normals = self._initialize_robot_points(
+            robot, num_robot_points
         )
-    else:
-        homogeneous_xyz = torch.cat(
-            (xyz, torch.ones(ones_dim, device=xyz.device)), dim=M
+        eef_points, eef_normals = self._initialize_eef_points_and_normals(
+            robot, num_eef_points
         )
-    transformed_xyz = torch.matmul(
-        transformation_matrix, homogeneous_xyz.transpose(N, M)
-    )
-    if in_place:
-        pc[..., :3] = transformed_xyz[..., :3, :].transpose(N, M)
-        return pc
-    return torch.cat((transformed_xyz[..., :3, :].transpose(N, M), pc[..., 3:]), dim=M)
+        self.points = {
+            **link_points,
+            **eef_points,
+        }
+        self.normals = {
+            **link_normals,
+            **eef_normals,
+        }
+
+        if use_cache:
+            points_to_save = {}
+            for key in self.points.items():
+                assert key in self.normals
+                pc = self.points[key]
+                normals = self.normals[key]
+                points_to_save[key] = {"pc": pc, "normals": normals}
+            file_name = self._get_cache_file_name_()
+            print(f"Saving new file to cache: {file_name}")
+            np.save(file_name, points_to_save)
+
+    def _initialize_eef_points_and_normals(self, robot, N):
+        links = [
+            link
+            for link in robot.links
+            if link.name
+            in set(
+                [
+                    "panda_hand",
+                    "panda_rightfinger",
+                    "panda_leftfinger",
+                ]
+            )
+        ]
+        meshes = [
+            trimesh.load(
+                Path(FrankaConstants.urdf).parent
+                / link.visuals[0].geometry.mesh.filename,
+                force="mesh",
+            )
+            for link in links
+        ]
+        areas = [mesh.bounding_box_oriented.area for mesh in meshes]
+        num_points = np.round(N * np.array(areas) / np.sum(areas))
+
+        points = {}
+        normals = {}
+        for ii, mesh in enumerate(meshes):
+            link_pc, face_indices = trimesh.sample.sample_surface(
+                mesh, int(num_points[ii])
+            )
+            points[f"eef_{links[ii].name}"] = link_pc
+            normals[f"eef_{links[ii].name}"] = self._init_normals(
+                mesh, link_pc, face_indices
+            )
+        return points, normals
+
+    def _initialize_robot_points(self, robot, N):
+        links = [
+            link
+            for link in robot.links
+            if link.name
+            in set(
+                [
+                    "panda_link0",
+                    "panda_link1",
+                    "panda_link2",
+                    "panda_link3",
+                    "panda_link4",
+                    "panda_link5",
+                    "panda_link6",
+                    "panda_link7",
+                    "panda_hand",
+                    "panda_rightfinger",
+                    "panda_leftfinger",
+                ]
+            )
+        ]
+
+        meshes = [
+            trimesh.load(
+                Path(FrankaConstants.urdf).parent
+                / link.visuals[0].geometry.mesh.filename,
+                force="mesh",
+            )
+            for link in links
+        ]
+        areas = [mesh.bounding_box_oriented.area for mesh in meshes]
+        num_points = np.round(N * np.array(areas) / np.sum(areas))
+
+        points = {}
+        normals = {}
+        for ii, mesh in enumerate(meshes):
+            link_pc, face_indices = trimesh.sample.sample_surface(
+                mesh, int(num_points[ii])
+            )[0]
+            points[links[ii].name] = link_pc
+            normals[f"eef_{links[ii].name}"] = self._init_normals(
+                mesh, link_pc, face_indices
+            )
+        return points, normals
+
+    def _init_normals(self, mesh, pc, face_indices):
+        bary = trimesh.triangles.points_to_barycentric(
+            triangles=mesh.triangles[face_indices], points=pc
+        )
+        # interpolate vertex normals from barycentric coordinates
+        normals = trimesh.unitize(
+            (
+                mesh.vertex_normals[mesh.faces[face_indices]]
+                * trimesh.unitize(bary).reshape((-1, 3, 1))
+            ).sum(axis=1)
+        )
+        return normals
+
+    def _get_cache_file_name_(self):
+        return (
+            FrankaConstants.pointcloud_cache
+            / f"deterministic_point_cloud_{self.num_robot_points}_{self.num_eef_points}.npy"
+        )
+
+    def _init_from_cache_(self):
+        file_name = self._get_cache_file_name_()
+        if not file_name.is_file():
+            return False
+
+        points = np.load(
+            file_name,
+            allow_pickle=True,
+        )
+        self.points = {key: v["pc"] for key, v in points.item().items()}
+        self.normals = {key: v["normals"] for key, v in points.item().items()}
+        return True
+
+    def arm(self, cfg, prismatic_joint, num_points=0):
+        """num_points = 0 implies use all points."""
+        assert num_points <= self.num_robot_points
+        return get_points_on_franka_arm(
+            cfg,
+            prismatic_joint,
+            num_points,
+            self.points["panda_link0"],
+            self.points["panda_link1"],
+            self.points["panda_link2"],
+            self.points["panda_link3"],
+            self.points["panda_link4"],
+            self.points["panda_link5"],
+            self.points["panda_link6"],
+            self.points["panda_link7"],
+            self.points["panda_hand"],
+            self.points["panda_leftfinger"],
+            self.points["panda_rightfinger"],
+        )
+
+    def end_effector(self, pose, prismatic_joint, num_points=0, frame="right_gripper"):
+        """
+        An internal method--separated so that the public facing method can
+        choose whether or not to have gradients.
+        num_points = 0 implies use all points.
+        """
+        assert num_points <= self.num_eef_points
+        return get_points_on_franka_eef(
+            pose,
+            prismatic_joint,
+            num_points,
+            self.points["eef_panda_hand"],
+            self.points["eef_panda_leftfinger"],
+            self.points["eef_panda_rightfinger"],
+            frame,
+        )
 
 
-class FrankaSampler:
+class TorchFrankaSampler:
     """
-    This class allows for fast pointcloud sampling from the surface of a robot.
+    This class allows for fast point cloud sampling from the surface of a robot.
     At initialization, it loads a URDF and samples points from the mesh of each link.
     The points per link are based on the (very approximate) surface area of the link.
 
     Then, after instantiation, the sample method takes in a batch of configurations
-    and produces pointclouds for each configuration by running FK on a subsample
-    of the per-link pointclouds that are established at initialization.
+    and produces point clouds for each configuration by running FK on a subsample
+    of the per-link point clouds that are established at initialization.
 
     """
 
@@ -86,7 +237,7 @@ class FrankaSampler:
     def _init_internal_(self, device, use_cache, max_points):
         self.max_points = max_points
         self.robot = TorchURDF.load(
-            FrankaRobot.urdf, lazy_load_meshes=True, device=device
+            FrankaConstants.urdf, lazy_load_meshes=True, device=device
         )
         self.links = [l for l in self.robot.links if len(l.visuals)]
         if use_cache and self._init_from_cache_(device):
@@ -94,7 +245,7 @@ class FrankaSampler:
 
         meshes = [
             trimesh.load(
-                Path(FrankaRobot.urdf).parent / l.visuals[0].geometry.mesh.filename,
+                Path(FrankaConstants.urdf).parent / l.visuals[0].geometry.mesh.filename,
                 force="mesh",
             )
             for l in self.links
@@ -153,12 +304,13 @@ class FrankaSampler:
     def _get_cache_file_name_(self):
         if self.num_fixed_points is not None:
             return (
-                FrankaRobot.pointcloud_cache
+                FrankaConstants.point_cloud_cache
                 / f"fixed_point_cloud_{self.num_fixed_points}_{self.max_points}.npy"
             )
         else:
             return (
-                FrankaRobot.pointcloud_cache / f"full_point_cloud_{self.max_points}.npy"
+                FrankaConstants.point_cloud_cache
+                / f"full_point_cloud_{self.max_points}.npy"
             )
 
     def _init_from_cache_(self, device):
@@ -236,11 +388,13 @@ class FrankaSampler:
         fk_normals = []
         if frame == "right_gripper":
             gripper_T_hand = torch.as_tensor(
-                FrankaRobot.EFF_T_LIST[("panda_hand", "right_gripper")].inverse.matrix
+                FrankaConstants.EFF_T_LIST[
+                    ("panda_hand", "right_gripper")
+                ].inverse.matrix
             ).type_as(poses)
         elif frame == "panda_link8":
             gripper_T_hand = torch.as_tensor(
-                FrankaRobot.EFF_T_LIST[("panda_link8", "panda_hand")].matrix
+                FrankaConstants.EFF_T_LIST[("panda_link8", "panda_hand")].matrix
             ).type_as(poses)
         elif frame == "panda_hand":
             gripper_T_hand = torch.eye(4)
@@ -255,12 +409,12 @@ class FrankaSampler:
         right_gripper_transform = gripper_T_hand.unsqueeze(0) @ inverse_hand_transform
         for idx, link in enumerate(end_effector_links):
             fk_transforms[link.name] = values[idx]
-            pc = transform_pointcloud(
+            pc = transform_point_cloud(
                 self.points[link.name].type_as(poses),
                 (right_gripper_transform @ fk_transforms[link.name]),
                 in_place=False,
             )
-            normals = transform_pointcloud(
+            normals = transform_point_cloud(
                 self.normals[link.name].type_as(poses),
                 (right_gripper_transform @ fk_transforms[link.name]),
                 vector=True,
@@ -287,8 +441,8 @@ class FrankaSampler:
             )
         pc = torch.cat(fk_points, dim=1)
         normals = torch.cat(fk_normals, dim=1)
-        pc = transform_pointcloud(pc.repeat(poses.size(0), 1, 1), poses, in_place=True)
-        normals = transform_pointcloud(
+        pc = transform_point_cloud(pc.repeat(poses.size(0), 1, 1), poses, in_place=True)
+        normals = transform_point_cloud(
             normals.repeat(poses.size(0), 1, 1), poses, vector=True, in_place=True
         )
         if num_points is None:
@@ -313,7 +467,7 @@ class FrankaSampler:
 
         Returns
         -------
-        N x num points x 3 pointcloud of robot points
+        N x num points x 3 point cloud of robot points
 
         """
         if self.num_fixed_points is not None:
@@ -345,14 +499,14 @@ class FrankaSampler:
             if not self.with_base_link and link.name == "panda_link0":
                 continue
             fk_transforms[link.name] = values[idx]
-            pc = transform_pointcloud(
+            pc = transform_point_cloud(
                 self.points[link.name]
                 .float()
                 .repeat((fk_transforms[link.name].shape[0], 1, 1)),
                 fk_transforms[link.name],
                 in_place=True,
             )
-            normals = transform_pointcloud(
+            normals = transform_point_cloud(
                 self.normals[link.name]
                 .float()
                 .repeat((fk_transforms[link.name].shape[0], 1, 1)),
@@ -387,7 +541,7 @@ class FrankaSampler:
         return pc[:, random_idxs, :], normals[:, random_idxs, :]
 
 
-class FrankaCollisionSampler:
+class TorchFrankaCollisionSampler:
     def __init__(
         self,
         device,
@@ -396,10 +550,10 @@ class FrankaCollisionSampler:
     ):
         logging.getLogger("trimesh").setLevel("ERROR")
         self.robot = TorchURDF.load(
-            FrankaRobot.urdf, lazy_load_meshes=True, device=device
+            FrankaConstants.urdf, lazy_load_meshes=True, device=device
         )
         self.spheres = []
-        for radius, point_set in FrankaRobot.SPHERES:
+        for radius, point_set in FrankaConstants.SPHERES:
             sphere_centers = {
                 k: torch.as_tensor(v).to(device) for k, v in point_set.items()
             }
@@ -417,7 +571,7 @@ class FrankaCollisionSampler:
             )
 
         all_spheres = {}
-        for radius, point_set in FrankaRobot.SPHERES:
+        for radius, point_set in FrankaConstants.SPHERES:
             for link_name, centers in point_set.items():
                 if not with_base_link and link_name == "panda_link0":
                     continue
@@ -456,15 +610,15 @@ class FrankaCollisionSampler:
             dim=1,
         )
         fk = self.robot.link_fk_batch(cfg, use_names=True)
-        pointcloud = []
+        point_cloud = []
         for link_name, points in self.link_points.items():
-            pc = transform_pointcloud(
+            pc = transform_point_cloud(
                 points.float().repeat((fk[link_name].shape[0], 1, 1)),
                 fk[link_name],
                 in_place=True,
             )
-            pointcloud.append(pc)
-        pc = torch.cat(pointcloud, dim=1)
+            point_cloud.append(pc)
+        pc = torch.cat(point_cloud, dim=1)
         return pc[:, np.random.choice(pc.shape[1], n, replace=False), :]
 
     def compute_spheres(self, config, prismatic_joint):
@@ -483,7 +637,7 @@ class FrankaCollisionSampler:
         for radius, spheres in self.spheres:
             fk_points = []
             for link_name in spheres:
-                pc = transform_pointcloud(
+                pc = transform_point_cloud(
                     spheres[link_name]
                     .type_as(cfg)
                     .repeat((fk[link_name].shape[0], 1, 1)),
@@ -514,11 +668,13 @@ class FrankaCollisionSampler:
         fk_points = []
         if frame == "right_gripper":
             task_T_hand = torch.as_tensor(
-                FrankaRobot.EFF_T_LIST[("panda_hand", "right_gripper")].inverse.matrix
+                FrankaConstants.EFF_T_LIST[
+                    ("panda_hand", "right_gripper")
+                ].inverse.matrix
             ).type_as(poses)
         elif frame == "panda_link8":
             task_T_hand = torch.as_tensor(
-                FrankaRobot.EFF_T_LIST[("panda_link8", "panda_hand")].matrix
+                FrankaConstants.EFF_T_LIST[("panda_link8", "panda_hand")].matrix
             ).type_as(poses)
         elif frame == "panda_hand":
             task_T_hand = torch.eye(4)
@@ -537,7 +693,7 @@ class FrankaCollisionSampler:
             for link_name in spheres:
                 if link_name not in eff_link_names:
                     continue
-                pc = transform_pointcloud(
+                pc = transform_point_cloud(
                     spheres[link_name]
                     .type_as(poses)
                     .repeat((fk[link_name].shape[0], 1, 1)),
@@ -550,14 +706,99 @@ class FrankaCollisionSampler:
         return points
 
 
-class FrankaSelfCollisionSampler(NumpySelfCollisionSampler):
-    def __init__(self, device):
-        super().__init__()
-        self.robot = TorchURDF.load(
-            FrankaRobot.urdf, lazy_load_meshes=True, device=device
+class NumpyFrankaSelfCollisionSampler:
+    def __init__(self):
+        logging.getLogger("trimesh").setLevel("ERROR")
+
+        # Set up the center points for calculating the FK position
+        self._init_robot()
+        self._init_points()
+
+    def _init_points(self):
+        link_names = []
+        centers = {}
+        for s in FrankaConstants.SELF_COLLISION_SPHERES:
+            if s[0] not in centers:
+                link_names.append(s[0])
+                centers[s[0]] = [s[1]]
+            else:
+                centers[s[0]].append(s[1])
+        self.points = [(name, np.asarray(centers[name])) for name in link_names]
+
+        self.collision_matrix = -np.inf * np.ones(
+            (
+                len(FrankaConstants.SELF_COLLISION_SPHERES),
+                len(FrankaConstants.SELF_COLLISION_SPHERES),
+            )
         )
+
+        link_ids = {link_name: idx for idx, link_name in enumerate(link_names)}
+        # Set up the self collision distance matrix
+        for idx1, (link_name1, center1, radius1) in enumerate(
+            FrankaConstants.SELF_COLLISION_SPHERES
+        ):
+            for idx2, (link_name2, center2, radius2) in enumerate(
+                FrankaConstants.SELF_COLLISION_SPHERES
+            ):
+                # Ignore all sphere pairs on the same link or adjacent links
+                if abs(link_ids[link_name1] - link_ids[link_name2]) < 2:
+                    continue
+                self.collision_matrix[idx1, idx2] = radius1 + radius2
+        self.link_points = {}
+        total_points = 10000
+        surface_scalar_sum = sum(
+            [radius**2 for (_, _, radius) in FrankaConstants.SELF_COLLISION_SPHERES]
+        )
+        surface_scalar = total_points / surface_scalar_sum
+
+        for idx1, (link_name, center, radius) in enumerate(
+            FrankaConstants.SELF_COLLISION_SPHERES
+        ):
+            sphere = Sphere(center, radius)
+            if link_name in self.link_points:
+                self.link_points[link_name] = np.concatenate(
+                    (
+                        self.link_points[link_name],
+                        sphere.sample_surface(int(surface_scalar * radius**2)),
+                    ),
+                    axis=0,
+                )
+            else:
+                self.link_points[link_name] = sphere.sample_surface(
+                    int(surface_scalar * radius**2)
+                )
+
+    def _init_robot(self):
+        self.robot = urchin.URDF.load(FrankaConstants.urdf, lazy_load_meshes=True)
+
+    def sample(self, config, prismatic_joint, n):
+        cfg = np.ones(8)
+        cfg[:7] = config
+        cfg[-1] = prismatic_joint
+        fk = self.robot.link_fk(cfg, use_names=True)
+        pointcloud = []
+        for link_name, centers in self.points:
+            pc = transform_point_cloud(
+                self.link_points[link_name], fk[link_name], in_place=False
+            )
+            pointcloud.append(pc)
+        pointcloud = np.concatenate(pointcloud, axis=0)
+        mask = np.random.choice(np.arange(len(pointcloud)), n, replace=False)
+        return pointcloud[mask]
+
+
+class TorchFrankaSelfCollisionSampler(NumpyFrankaSelfCollisionSampler):
+    def __init__(self, device):
+        self._init_robot(device)
+        self._init_points()
+
         for k, v in self.link_points.items():
             self.link_points[k] = torch.as_tensor(v, device=device).unsqueeze(0)
+
+    def _init_robot(self, device):
+        self.robot = TorchURDF.load(
+            FrankaConstants.urdf, lazy_load_meshes=True, device=device
+        )
 
     def sample(self, config, prismatic_joint, n):
         if config.ndim == 1:
@@ -571,13 +812,13 @@ class FrankaSelfCollisionSampler(NumpySelfCollisionSampler):
             dim=1,
         )
         fk = self.robot.link_fk_batch(cfg, use_names=True)
-        pointcloud = []
+        point_cloud = []
         for link_name, points in self.link_points.items():
-            pc = transform_pointcloud(
+            pc = transform_point_cloud(
                 points.float().repeat((fk[link_name].shape[0], 1, 1)),
                 fk[link_name],
                 in_place=True,
             )
-            pointcloud.append(pc)
-        pc = torch.cat(pointcloud, dim=1)
+            point_cloud.append(pc)
+        pc = torch.cat(point_cloud, dim=1)
         return pc[:, np.random.choice(pc.shape[1], n, replace=False), :]
