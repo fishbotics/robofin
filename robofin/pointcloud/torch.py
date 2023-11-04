@@ -195,14 +195,26 @@ class FrankaSampler:
         return fk[frame]
 
     def sample_end_effector(
-        self, poses, prismatic_joint, num_points, frame="right_gripper"
+        self,
+        poses,
+        prismatic_joint,
+        num_points=None,
+        all_points=False,
+        frame="right_gripper",
     ):
         """
         An internal method--separated so that the public facing method can
         choose whether or not to have gradients
         """
+        if self.num_fixed_points is not None:
+            all_points = True
+        assert bool(all_points is False) ^ bool(num_points is None)
         assert poses.ndim in [2, 3]
-        assert frame == "right_gripper", "Other frames not yet suppported"
+        assert frame in [
+            "right_gripper",
+            "panda_link8",
+            "panda_hand",
+        ], "Other frames not yet suppported"
         if poses.ndim == 2:
             poses = poses.unsqueeze(0)
         default_cfg = torch.zeros((1, 9), device=poses.device)
@@ -222,9 +234,17 @@ class FrankaSampler:
         fk_transforms = {}
         fk_points = []
         fk_normals = []
-        gripper_T_hand = torch.as_tensor(
-            FrankaRobot.EFF_T_LIST[("panda_hand", "right_gripper")].inverse.matrix
-        ).type_as(poses)
+        if frame == "right_gripper":
+            gripper_T_hand = torch.as_tensor(
+                FrankaRobot.EFF_T_LIST[("panda_hand", "right_gripper")].inverse.matrix
+            ).type_as(poses)
+        elif frame == "panda_link8":
+            gripper_T_hand = torch.as_tensor(
+                FrankaRobot.EFF_T_LIST[("panda_link8", "panda_hand")].matrix
+            ).type_as(poses)
+        elif frame == "panda_hand":
+            gripper_T_hand = torch.eye(4)
+
         # Could just invert the matrix, but matrix inversion is not implemented for half-types
         inverse_hand_transform = torch.zeros_like(values[0])
         inverse_hand_transform[:, -1, -1] = 1
@@ -472,6 +492,61 @@ class FrankaCollisionSampler:
                 )
                 fk_points.append(pc)
             points.append((radius, torch.cat(fk_points, dim=1)))
+        return points
+
+    def compute_eef_spheres(self, poses, prismatic_joint, frame):
+        # pose should be in panda_link8 frame
+        assert frame in [
+            "right_gripper",
+            "panda_link8",
+            "panda_hand",
+        ], "Other frames not yet suppported"
+        if poses.ndim == 2:
+            poses = poses.unsqueeze(0)
+        default_cfg = torch.zeros((1, 9), device=poses.device)
+        default_cfg[0, 7:] = prismatic_joint
+        fk = self.robot.link_fk_batch(default_cfg, use_names=True)
+        eff_link_names = ["panda_hand", "panda_leftfinger", "panda_rightfinger"]
+        values = [fk[name] for name in eff_link_names]
+
+        end_effector_links = [l for l in self.links if l.name in eff_link_names]
+        assert len(end_effector_links) == len(values)
+        fk_points = []
+        if frame == "right_gripper":
+            task_T_hand = torch.as_tensor(
+                FrankaRobot.EFF_T_LIST[("panda_hand", "right_gripper")].inverse.matrix
+            ).type_as(poses)
+        elif frame == "panda_link8":
+            task_T_hand = torch.as_tensor(
+                FrankaRobot.EFF_T_LIST[("panda_link8", "panda_hand")].matrix
+            ).type_as(poses)
+        elif frame == "panda_hand":
+            task_T_hand = torch.eye(4)
+        # Could just invert the matrix, but matrix inversion is not implemented for half-types
+        inverse_hand_transform = torch.zeros_like(poses.size(0), 4, 4)
+        inverse_hand_transform[:, -1, -1] = 1
+        inverse_hand_transform[:, :3, :3] = values[0][:, :3, :3].transpose(1, 2)
+        inverse_hand_transform[:, :3, -1] = -torch.matmul(
+            inverse_hand_transform[:, :3, :3], values[0][:, :3, -1].unsqueeze(-1)
+        ).squeeze(-1)
+        transform = task_T_hand.unsqueeze(0) @ inverse_hand_transform
+
+        points = []
+        for radius, spheres in self.spheres:
+            fk_points = []
+            for link_name in spheres:
+                if link_name not in eff_link_names:
+                    continue
+                pc = transform_pointcloud(
+                    spheres[link_name]
+                    .type_as(poses)
+                    .repeat((fk[link_name].shape[0], 1, 1)),
+                    transform @ fk[link_name].type_as(poses),
+                    in_place=True,
+                )
+                fk_points.append(pc)
+            if fk_points:
+                points.append((radius, torch.cat(fk_points, dim=1)))
         return points
 
 

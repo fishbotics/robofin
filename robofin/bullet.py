@@ -1,13 +1,13 @@
+import math
 from pathlib import Path
 
 import numpy as np
 import pybullet as p
-from geometrout import Cuboid, Sphere, Cylinder, SE3
-
-from robofin.robots import FrankaRobot, FrankaGripper
-from robofin.pointcloud.numpy import transform_pointcloud
-import math
 import trimesh
+from geometrout import SE3, Cuboid, Cylinder, Sphere
+
+from robofin.pointcloud.numpy import transform_pointcloud
+from robofin.robots import FrankaGripper, FrankaRobot
 
 
 class BulletRobot:
