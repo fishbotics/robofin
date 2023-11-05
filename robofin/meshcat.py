@@ -3,7 +3,7 @@ import numpy as np
 import urchin
 from geometrout.primitive import Cuboid, Cylinder, Sphere
 
-from robofin.kinematics.collision import FrankaCollisionSpheres
+from robofin.collision import FrankaCollisionSpheres
 from robofin.robot_constants import FrankaConstants
 
 
