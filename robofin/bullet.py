@@ -6,7 +6,7 @@ import pybullet as p
 import trimesh
 from geometrout import SE3, Cuboid, Cylinder, Sphere
 
-from robofin.pointcloud.numpy import transform_pointcloud
+from robofin.point_cloud_tools import transform_point_cloud
 from robofin.robots import FrankaGripper, FrankaRobot
 
 
@@ -21,9 +21,9 @@ class BulletRobot:
 
     def load(self, clid, urdf_path=None):
         if self.hd:
-            urdf = self.robot_type.hd_urdf
+            urdf = self.robot_type.constants.hd_urdf
         else:
-            urdf = self.robot_type.urdf
+            urdf = self.robot_type.constants.urdf
         return p.loadURDF(
             urdf,
             useFixedBase=True,
@@ -676,7 +676,7 @@ class Bullet:
             np.array([0, 0, 0]), np.array([0, 1, 0, 0])
         )
         pc = pc[~np.all(pc == 0, axis=1)]
-        transform_pointcloud(pc, capture_camera.matrix, in_place=True)
+        transform_point_cloud(pc, capture_camera.matrix, in_place=True)
         return pc
 
     def load_robot(self, robot_type, hd=False, collision_free=False, **kwargs):
