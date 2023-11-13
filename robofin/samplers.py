@@ -649,7 +649,6 @@ class TorchFrankaCollisionSampler:
         return points
 
     def compute_eef_spheres(self, poses, prismatic_joint, frame):
-        # pose should be in panda_link8 frame
         assert frame in [
             "right_gripper",
             "panda_link8",
@@ -663,8 +662,6 @@ class TorchFrankaCollisionSampler:
         eff_link_names = ["panda_hand", "panda_leftfinger", "panda_rightfinger"]
         values = [fk[name] for name in eff_link_names]
 
-        end_effector_links = [l for l in self.links if l.name in eff_link_names]
-        assert len(end_effector_links) == len(values)
         fk_points = []
         if frame == "right_gripper":
             task_T_hand = torch.as_tensor(
@@ -679,11 +676,12 @@ class TorchFrankaCollisionSampler:
         elif frame == "panda_hand":
             task_T_hand = torch.eye(4)
         # Could just invert the matrix, but matrix inversion is not implemented for half-types
-        inverse_hand_transform = torch.zeros_like(poses.size(0), 4, 4)
+        inverse_hand_transform = torch.zeros((poses.size(0), 4, 4)).type_as(poses)
         inverse_hand_transform[:, -1, -1] = 1
         inverse_hand_transform[:, :3, :3] = values[0][:, :3, :3].transpose(1, 2)
         inverse_hand_transform[:, :3, -1] = -torch.matmul(
-            inverse_hand_transform[:, :3, :3], values[0][:, :3, -1].unsqueeze(-1)
+            inverse_hand_transform[:, :3, :3],
+            values[0][:, :3, -1].unsqueeze(-1).type_as(poses),
         ).squeeze(-1)
         transform = task_T_hand.unsqueeze(0) @ inverse_hand_transform
 
@@ -694,10 +692,8 @@ class TorchFrankaCollisionSampler:
                 if link_name not in eff_link_names:
                     continue
                 pc = transform_point_cloud(
-                    spheres[link_name]
-                    .type_as(poses)
-                    .repeat((fk[link_name].shape[0], 1, 1)),
-                    transform @ fk[link_name].type_as(poses),
+                    spheres[link_name].type_as(poses).repeat((poses.size(0), 1, 1)),
+                    poses @ transform @ fk[link_name].type_as(poses),
                     in_place=True,
                 )
                 fk_points.append(pc)
