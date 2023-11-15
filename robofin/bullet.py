@@ -520,7 +520,7 @@ class Bullet:
         ).T
         if finite_depth:
             pc = pc[np.isfinite(pc[:, 0]), :]
-        capture_camera = camera_T_world.inverse @ SE3(xyz=[0, 0, 0], quat=[0, 1, 0, 0])
+        capture_camera = camera_T_world.inverse @ SE3(xyz=[0, 0, 0], quaternion=[0, 1, 0, 0])
         pc = pc[~np.all(pc == 0, axis=1)]
         transform_pointcloud(pc, capture_camera.matrix, in_place=True)
         return pc
