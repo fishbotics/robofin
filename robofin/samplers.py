@@ -154,7 +154,7 @@ class NumpyFrankaSampler:
 
     def _get_cache_file_name_(self):
         return (
-            FrankaConstants.pointcloud_cache
+            FrankaConstants.point_cloud_cache
             / f"deterministic_point_cloud_{self.num_robot_points}_{self.num_eef_points}.npy"
         )
 

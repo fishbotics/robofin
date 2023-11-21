@@ -629,7 +629,7 @@ class Bullet:
             depth = far * near / (far - (far - near) * depth)
         return rgb, depth, seg
 
-    def get_pointcloud_from_camera(
+    def get_point_cloud_from_camera(
         self,
         camera_T_world,
         width=640,
