@@ -85,7 +85,7 @@ class NumpyFrankaSampler:
         points = {}
         normals = {}
         for ii, mesh in enumerate(meshes):
-            link_pc, face_indices, *_ = trimesh.sample.sample_surface(
+            link_pc, face_indices = trimesh.sample.sample_surface(
                 mesh, int(num_points[ii])
             )
             points[f"eef_{links[ii].name}"] = link_pc
@@ -130,9 +130,9 @@ class NumpyFrankaSampler:
         points = {}
         normals = {}
         for ii, mesh in enumerate(meshes):
-            link_pc, face_indices, *_ = trimesh.sample.sample_surface(
+            link_pc, face_indices = trimesh.sample.sample_surface(
                 mesh, int(num_points[ii])
-            )[0]
+            )
             points[links[ii].name] = link_pc
             normals[f"eef_{links[ii].name}"] = self._init_normals(
                 mesh, link_pc, face_indices
@@ -263,7 +263,7 @@ class TorchFrankaSampler:
         self.normals = {}
         for ii in range(len(meshes)):
             # Will have to be updated with Trimesh 4.0.0 (has different return value)
-            pc, face_indices, *_ = trimesh.sample.sample_surface(
+            pc, face_indices = trimesh.sample.sample_surface(
                 meshes[ii], int(num_points[ii])
             )
             self.points[self.links[ii].name] = torch.as_tensor(
