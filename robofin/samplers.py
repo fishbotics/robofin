@@ -7,6 +7,7 @@ import trimesh
 import urchin
 from geometrout.primitive import Sphere
 
+from robofin.kinematics.numba import get_points_on_franka_arm, get_points_on_franka_eef
 from robofin.point_cloud_tools import transform_point_cloud
 from robofin.robot_constants import FrankaConstants
 from robofin.torch_urdf import TorchURDF
@@ -49,9 +50,8 @@ class NumpyFrankaSampler:
 
         if use_cache:
             points_to_save = {}
-            for key in self.points.items():
+            for key, pc in self.points.items():
                 assert key in self.normals
-                pc = self.points[key]
                 normals = self.normals[key]
                 points_to_save[key] = {"pc": pc, "normals": normals}
             file_name = self._get_cache_file_name_()
@@ -134,7 +134,7 @@ class NumpyFrankaSampler:
                 mesh, int(num_points[ii])
             )
             points[links[ii].name] = link_pc
-            normals[f"eef_{links[ii].name}"] = self._init_normals(
+            normals[f"{links[ii].name}"] = self._init_normals(
                 mesh, link_pc, face_indices
             )
         return points, normals
@@ -171,7 +171,7 @@ class NumpyFrankaSampler:
         self.normals = {key: v["normals"] for key, v in points.item().items()}
         return True
 
-    def arm(self, cfg, prismatic_joint, num_points=0):
+    def sample(self, cfg, prismatic_joint, num_points=0):
         """num_points = 0 implies use all points."""
         assert num_points <= self.num_robot_points
         return get_points_on_franka_arm(
@@ -191,7 +191,9 @@ class NumpyFrankaSampler:
             self.points["panda_rightfinger"],
         )
 
-    def end_effector(self, pose, prismatic_joint, num_points=0, frame="right_gripper"):
+    def sample_end_effector(
+        self, pose, prismatic_joint, num_points=0, frame="right_gripper"
+    ):
         """
         An internal method--separated so that the public facing method can
         choose whether or not to have gradients.
