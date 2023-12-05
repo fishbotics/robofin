@@ -13,7 +13,7 @@ from robofin.robot_constants import FrankaConstants
 from robofin.torch_urdf import TorchURDF
 
 
-class NumpyFrankaSampler:
+class SamplerBase:
     def __init__(
         self,
         num_robot_points=4096,
@@ -155,7 +155,7 @@ class NumpyFrankaSampler:
     def _get_cache_file_name_(self):
         return (
             FrankaConstants.point_cloud_cache
-            / f"deterministic_point_cloud_{self.num_robot_points}_{self.num_eef_points}.npy"
+            / f"franka_point_cloud_{self.num_robot_points}_{self.num_eef_points}.npy"
         )
 
     def _init_from_cache_(self):
@@ -171,13 +171,15 @@ class NumpyFrankaSampler:
         self.normals = {key: v["normals"] for key, v in points.item().items()}
         return True
 
-    def sample(self, cfg, prismatic_joint, num_points=0):
+
+class NumpyFrankaSampler(SamplerBase):
+    def sample(self, cfg, prismatic_joint, num_points=None):
         """num_points = 0 implies use all points."""
-        assert num_points <= self.num_robot_points
+        assert num_points is None or 0 < num_points <= self.num_eef_points
         return get_points_on_franka_arm(
             cfg,
             prismatic_joint,
-            num_points,
+            num_points or 0,
             self.points["panda_link0"],
             self.points["panda_link1"],
             self.points["panda_link2"],
@@ -192,18 +194,13 @@ class NumpyFrankaSampler:
         )
 
     def sample_end_effector(
-        self, pose, prismatic_joint, num_points=0, frame="right_gripper"
+        self, pose, prismatic_joint, num_points=None, frame="right_gripper"
     ):
-        """
-        An internal method--separated so that the public facing method can
-        choose whether or not to have gradients.
-        num_points = 0 implies use all points.
-        """
-        assert num_points <= self.num_eef_points
+        assert num_points is None or 0 < num_points <= self.num_eef_points
         return get_points_on_franka_eef(
             pose,
             prismatic_joint,
-            num_points,
+            num_points or 0,
             self.points["eef_panda_hand"],
             self.points["eef_panda_leftfinger"],
             self.points["eef_panda_rightfinger"],
@@ -211,7 +208,7 @@ class NumpyFrankaSampler:
         )
 
 
-class TorchFrankaSampler:
+class TorchFrankaSampler(SamplerBase):
     """
     This class allows for fast point cloud sampling from the surface of a robot.
     At initialization, it loads a URDF and samples points from the mesh of each link.
@@ -225,114 +222,26 @@ class TorchFrankaSampler:
 
     def __init__(
         self,
-        device,
-        num_fixed_points=None,
-        use_cache=False,
+        num_robot_points=4096,
+        num_eef_points=128,
+        use_cache=True,
         with_base_link=True,
-        max_points=4096,
+        device="cpu",
     ):
         logging.getLogger("trimesh").setLevel("ERROR")
-        self.num_fixed_points = num_fixed_points
-        self.with_base_link = with_base_link
-        self._init_internal_(device, use_cache, max_points)
-
-    def _init_internal_(self, device, use_cache, max_points):
-        self.max_points = max_points
+        super().__init__(num_robot_points, num_eef_points, use_cache, with_base_link)
         self.robot = TorchURDF.load(
             FrankaConstants.urdf, lazy_load_meshes=True, device=device
         )
         self.links = [l for l in self.robot.links if len(l.visuals)]
-        if use_cache and self._init_from_cache_(device):
-            return
-
-        meshes = [
-            trimesh.load(
-                Path(FrankaConstants.urdf).parent / l.visuals[0].geometry.mesh.filename,
-                force="mesh",
-            )
-            for l in self.links
-        ]
-        areas = [mesh.bounding_box_oriented.area for mesh in meshes]
-        if self.num_fixed_points is not None:
-            num_points = np.round(
-                self.num_fixed_points * np.array(areas) / np.sum(areas)
-            )
-            num_points[0] += self.num_fixed_points - np.sum(num_points)
-            assert np.sum(num_points) == self.num_fixed_points
-        else:
-            num_points = np.round(max_points * np.array(areas) / np.sum(areas))
-        self.points = {}
-        self.normals = {}
-        for ii in range(len(meshes)):
-            # Will have to be updated with Trimesh 4.0.0 (has different return value)
-            pc, face_indices = trimesh.sample.sample_surface(
-                meshes[ii], int(num_points[ii])
-            )
-            self.points[self.links[ii].name] = torch.as_tensor(
-                pc, device=device
-            ).unsqueeze(0)
-            self.normals[self.links[ii].name] = torch.as_tensor(
-                self._init_normals(meshes[ii], pc, face_indices),
-                device=device,
-            ).unsqueeze(0)
-
-        # If we made it all the way here with the use_cache flag set,
-        # then we should be creating new cache files locally
-        if use_cache:
-            points_to_save = {}
-            for key in self.points:
-                assert key in self.normals
-                pc = self.points[key].squeeze(0).cpu().numpy()
-                normals = self.normals[key].squeeze(0).cpu().numpy()
-                points_to_save[key] = {"pc": pc, "normals": normals}
-
-            file_name = self._get_cache_file_name_()
-            print(f"Saving new file to cache: {file_name}")
-            np.save(file_name, points_to_save)
-
-    def _init_normals(self, mesh, pc, face_indices):
-        bary = trimesh.triangles.points_to_barycentric(
-            triangles=mesh.triangles[face_indices], points=pc
-        )
-        # interpolate vertex normals from barycentric coordinates
-        normals = trimesh.unitize(
-            (
-                mesh.vertex_normals[mesh.faces[face_indices]]
-                * trimesh.unitize(bary).reshape((-1, 3, 1))
-            ).sum(axis=1)
-        )
-        return normals
-
-    def _get_cache_file_name_(self):
-        if self.num_fixed_points is not None:
-            return (
-                FrankaConstants.point_cloud_cache
-                / f"fixed_point_cloud_{self.num_fixed_points}_{self.max_points}.npy"
-            )
-        else:
-            return (
-                FrankaConstants.point_cloud_cache
-                / f"full_point_cloud_{self.max_points}.npy"
-            )
-
-    def _init_from_cache_(self, device):
-        file_name = self._get_cache_file_name_()
-        if not file_name.is_file():
-            return False
-
-        points = np.load(
-            file_name,
-            allow_pickle=True,
-        )
         self.points = {
-            key: torch.as_tensor(point_info["pc"], device=device).unsqueeze(0)
-            for key, point_info in points.item().items()
+            key: torch.as_tensor(val).unsqueeze(0).to(device)
+            for key, val in self.points.items()
         }
         self.normals = {
-            key: torch.as_tensor(point_info["normals"], device=device).unsqueeze(0)
-            for key, point_info in points.item().items()
+            key: torch.as_tensor(val).unsqueeze(0).to(device)
+            for key, val in self.normals.items()
         }
-        return True
 
     def end_effector_pose(self, config, prismatic_joint, frame="right_gripper"):
         if config.ndim == 1:
@@ -348,21 +257,15 @@ class TorchFrankaSampler:
         fk = self.robot.link_fk_batch(cfg, use_names=True)
         return fk[frame]
 
-    def sample_end_effector(
+    def _sample_end_effector(
         self,
+        with_normals,
         poses,
         prismatic_joint,
         num_points=None,
-        all_points=False,
         frame="right_gripper",
     ):
-        """
-        An internal method--separated so that the public facing method can
-        choose whether or not to have gradients
-        """
-        if self.num_fixed_points is not None:
-            all_points = True
-        assert bool(all_points is False) ^ bool(num_points is None)
+        assert num_points is None or 0 < num_points <= self.num_eef_points
         assert poses.ndim in [2, 3]
         assert frame in [
             "right_gripper",
@@ -373,108 +276,118 @@ class TorchFrankaSampler:
             poses = poses.unsqueeze(0)
         default_cfg = torch.zeros((1, 9), device=poses.device)
         default_cfg[0, 7:] = prismatic_joint
-        fk = self.robot.visual_geometry_fk_batch(default_cfg)
-        eff_link_names = ["panda_hand", "panda_leftfinger", "panda_rightfinger"]
+        link_fk = self.robot.link_fk_batch(default_cfg, use_names=True)
+        visual_fk = self.robot.visual_geometry_fk_batch(default_cfg, use_names=True)
 
-        # This logic could break--really need a way to make sure that the
-        # ordering is correct
-        values = [
-            list(fk.values())[idx]
-            for idx, l in enumerate(self.links)
-            if l.name in eff_link_names
-        ]
-        end_effector_links = [l for l in self.links if l.name in eff_link_names]
-        assert len(end_effector_links) == len(values)
-        fk_transforms = {}
         fk_points = []
-        fk_normals = []
+        if with_normals:
+            fk_normals = []
         if frame == "right_gripper":
-            gripper_T_hand = torch.as_tensor(
-                FrankaConstants.EFF_T_LIST[
-                    ("panda_hand", "right_gripper")
+            eef_T_link8 = torch.as_tensor(
+                FrankaConstants.EEF_T_LIST[
+                    ("panda_link8", "right_gripper")
                 ].inverse.matrix
             ).type_as(poses)
         elif frame == "panda_link8":
-            gripper_T_hand = torch.as_tensor(
-                FrankaConstants.EFF_T_LIST[("panda_link8", "panda_hand")].matrix
-            ).type_as(poses)
+            eef_T_link8 = np.eye(4)
         elif frame == "panda_hand":
-            gripper_T_hand = torch.eye(4)
+            eef_T_link8 = torch.as_tensor(
+                FrankaConstants.EEF_T_LIST[("panda_link8", "panda_hand")].inverse.matrix
+            ).type_as(poses)
+        else:
+            raise NotImplementedError("Other frames not supported")
 
         # Could just invert the matrix, but matrix inversion is not implemented for half-types
-        inverse_hand_transform = torch.zeros_like(values[0])
-        inverse_hand_transform[:, -1, -1] = 1
-        inverse_hand_transform[:, :3, :3] = values[0][:, :3, :3].transpose(1, 2)
-        inverse_hand_transform[:, :3, -1] = -torch.matmul(
-            inverse_hand_transform[:, :3, :3], values[0][:, :3, -1].unsqueeze(-1)
+        link8_T_world = torch.zeros_like(link_fk["panda_link8"])
+        link8_T_world[:, -1, -1] = 1
+        link8_T_world[:, :3, :3] = link_fk["panda_link8"][:, :3, :3].transpose(1, 2)
+        link8_T_world[:, :3, -1] = -torch.matmul(
+            link8_T_world[:, :3, :3], link_fk["panda_link8"][:, :3, -1].unsqueeze(-1)
         ).squeeze(-1)
-        right_gripper_transform = gripper_T_hand.unsqueeze(0) @ inverse_hand_transform
-        for idx, link in enumerate(end_effector_links):
-            fk_transforms[link.name] = values[idx]
+        eef_transform = poses @ eef_T_link8.unsqueeze(0) @ link8_T_world
+        for link_name, link_idx in FrankaConstants.EEF_VISUAL_LINKS.__members__.items():
             pc = transform_point_cloud(
-                self.points[link.name].type_as(poses),
-                (right_gripper_transform @ fk_transforms[link.name]),
-                in_place=False,
+                self.points[f"eef_{link_name}"].float().repeat((poses.shape[0], 1, 1)),
+                eef_transform @ visual_fk[link_name],
+                in_place=True,
             )
-            normals = transform_point_cloud(
-                self.normals[link.name].type_as(poses),
-                (right_gripper_transform @ fk_transforms[link.name]),
-                vector=True,
-                in_place=False,
-            )
-
             fk_points.append(
                 torch.cat(
-                    (pc, idx * torch.ones((pc.size(0), pc.size(1), 1)).type_as(pc)),
-                    dim=-1,
-                )
-            )
-            fk_normals.append(
-                torch.cat(
                     (
-                        normals,
-                        idx
-                        * torch.ones((normals.size(0), normals.size(1), 1)).type_as(
-                            normals
-                        ),
+                        pc,
+                        link_idx * torch.ones((pc.size(0), pc.size(1), 1)).type_as(pc),
                     ),
                     dim=-1,
                 )
             )
+            if with_normals:
+                normals = transform_point_cloud(
+                    self.normals[f"eef_{link_name}"]
+                    .float()
+                    .repeat((poses.shape[0], 1, 1)),
+                    eef_transform @ fk[link_name],
+                    vector=True,
+                    in_place=True,
+                )
+
+                fk_normals.append(
+                    torch.cat(
+                        (
+                            normals,
+                            link_idx
+                            * torch.ones((normals.size(0), normals.size(1), 1)).type_as(
+                                normals
+                            ),
+                        ),
+                        dim=-1,
+                    )
+                )
         pc = torch.cat(fk_points, dim=1)
-        normals = torch.cat(fk_normals, dim=1)
-        pc = transform_point_cloud(pc.repeat(poses.size(0), 1, 1), poses, in_place=True)
-        normals = transform_point_cloud(
-            normals.repeat(poses.size(0), 1, 1), poses, vector=True, in_place=True
-        )
+        if with_normals:
+            normals = torch.cat(fk_normals, dim=1)
         if num_points is None:
-            return pc, normals
+            if with_normals:
+                return pc, normals
+            else:
+                return pc
         sample_idxs = np.random.choice(pc.shape[1], num_points, replace=False)
-        return (pc[:, sample_idxs, :], normals[:, sample_idxs, :])
+        if with_normals:
+            return (pc[:, sample_idxs, :], normals[:, sample_idxs, :])
+        return pc[:, sample_idxs, :]
 
-    def sample(
-        self, config, prismatic_joint, num_points=None, all_points=False, only_eff=False
+    def sample_end_effector_with_normals(
+        self,
+        poses,
+        prismatic_joint,
+        num_points=None,
+        frame="right_gripper",
     ):
-        """
-        Samples points from the surface of the robot by calling fk.
+        return self._sample_end_effector(
+            with_normals=True,
+            poses=poses,
+            prismatic_joint=prismatic_joint,
+            num_points=num_points,
+            frame=frame,
+        )
 
-        Parameters
-        ----------
-        config : Tensor of length (M,) or (N, M) where M is the number of
-            actuated joints.
-            For example, if using the Franka, M is 9
-        num_points : Number of points desired
-        all_points : Simply return all points
-        only_eff : Whether to only return points on the end effector
+    def sample_end_effector(
+        self,
+        poses,
+        prismatic_joint,
+        num_points=None,
+        frame="right_gripper",
+    ):
+        return self._sample_end_effector(
+            with_normals=False,
+            poses=poses,
+            prismatic_joint=prismatic_joint,
+            num_points=num_points,
+            frame=frame,
+        )
 
-        Returns
-        -------
-        N x num points x 3 point cloud of robot points
-
-        """
-        if self.num_fixed_points is not None:
-            all_points = True
-        assert bool(all_points is False) ^ bool(num_points is None)
+    def _sample(
+        self, with_normals, config, prismatic_joint, num_points=None, only_eff=False
+    ):
         if config.ndim == 1:
             config = config.unsqueeze(0)
         cfg = torch.cat(
@@ -485,62 +398,85 @@ class TorchFrankaSampler:
             ),
             dim=1,
         )
-        fk = self.robot.visual_geometry_fk_batch(cfg)
-        values = list(fk.values())
-        assert len(self.links) == len(values)
-        fk_transforms = {}
+        fk = self.robot.visual_geometry_fk_batch(cfg, use_names=True)
         fk_points = []
-        fk_normals = []
-        for idx, link in enumerate(self.links):
-            if only_eff and link.name not in [
+        if with_normals:
+            fk_normals = []
+        for link_name, link_idx in FrankaConstants.ARM_VISUAL_LINKS.__members__.items():
+            if only_eff and link_name not in [
                 "panda_hand",
                 "panda_leftfinger",
                 "panda_rightfinger",
             ]:
                 continue
-            if not self.with_base_link and link.name == "panda_link0":
+            if not self.with_base_link and link_name == "panda_link0":
                 continue
-            fk_transforms[link.name] = values[idx]
             pc = transform_point_cloud(
-                self.points[link.name]
-                .float()
-                .repeat((fk_transforms[link.name].shape[0], 1, 1)),
-                fk_transforms[link.name],
+                self.points[link_name].float().repeat((fk[link_name].shape[0], 1, 1)),
+                fk[link_name],
                 in_place=True,
             )
-            normals = transform_point_cloud(
-                self.normals[link.name]
-                .float()
-                .repeat((fk_transforms[link.name].shape[0], 1, 1)),
-                fk_transforms[link.name],
-                vector=True,
-                in_place=True,
-            )
-
             fk_points.append(
                 torch.cat(
-                    (pc, idx * torch.ones((pc.size(0), pc.size(1), 1)).type_as(pc)),
-                    dim=-1,
-                )
-            )
-            fk_normals.append(
-                torch.cat(
                     (
-                        normals,
-                        idx
-                        * torch.ones((normals.size(0), normals.size(1), 1)).type_as(
-                            normals
-                        ),
+                        pc,
+                        link_idx * torch.ones((pc.size(0), pc.size(1), 1)).type_as(pc),
                     ),
                     dim=-1,
                 )
             )
+            if with_normals:
+                normals = transform_point_cloud(
+                    self.normals[link_name]
+                    .float()
+                    .repeat((fk[link_name].shape[0], 1, 1)),
+                    fk[link_name],
+                    vector=True,
+                    in_place=True,
+                )
+                fk_normals.append(
+                    torch.cat(
+                        (
+                            normals,
+                            link_idx
+                            * torch.ones((normals.size(0), normals.size(1), 1)).type_as(
+                                normals
+                            ),
+                        ),
+                        dim=-1,
+                    )
+                )
         pc = torch.cat(fk_points, dim=1)
-        normals = torch.cat(fk_normals, dim=1)
+        if with_normals:
+            normals = torch.cat(fk_normals, dim=1)
         if num_points is None:
-            return pc, normals
+            if with_normals:
+                return pc, normals
+            return pc
         random_idxs = np.random.choice(pc.shape[1], num_points, replace=False)
-        return pc[:, random_idxs, :], normals[:, random_idxs, :]
+        if with_normals:
+            return pc[:, random_idxs, :], normals[:, random_idxs, :]
+        return pc[:, random_idxs, :]
+
+    def sample(self, config, prismatic_joint, num_points=None, only_eff=False):
+        return self._sample(
+            with_normals=False,
+            config=config,
+            prismatic_joint=prismatic_joint,
+            num_points=num_points,
+            only_eff=only_eff,
+        )
+
+    def sample_with_normals(
+        self, config, prismatic_joint, num_points=None, only_eff=False
+    ):
+        return self._sample(
+            with_normals=True,
+            config=config,
+            prismatic_joint=prismatic_joint,
+            num_points=num_points,
+            only_eff=only_eff,
+        )
 
 
 class TorchFrankaCollisionSampler:
@@ -667,13 +603,13 @@ class TorchFrankaCollisionSampler:
         fk_points = []
         if frame == "right_gripper":
             task_T_hand = torch.as_tensor(
-                FrankaConstants.EFF_T_LIST[
+                FrankaConstants.EEF_T_LIST[
                     ("panda_hand", "right_gripper")
                 ].inverse.matrix
             ).type_as(poses)
         elif frame == "panda_link8":
             task_T_hand = torch.as_tensor(
-                FrankaConstants.EFF_T_LIST[("panda_link8", "panda_hand")].matrix
+                FrankaConstants.EEF_T_LIST[("panda_link8", "panda_hand")].matrix
             ).type_as(poses)
         elif frame == "panda_hand":
             task_T_hand = torch.eye(4)

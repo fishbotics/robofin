@@ -1,20 +1,21 @@
+import os
+from collections import OrderedDict
+
+import numpy as np
+import torch
+from lxml import etree as ET
 from urchin import (
     URDF,
-    URDFTypeWithMesh,
+    Collision,
+    Inertial,
     Joint,
     Link,
-    Transmission,
     Material,
-    Inertial,
+    Transmission,
+    URDFTypeWithMesh,
     Visual,
-    Collision,
 )
 from urchin.utils import parse_origin
-from collections import OrderedDict
-from lxml import etree as ET
-import os
-import torch
-import numpy as np
 
 
 def configure_origin(value, device=None):
@@ -317,7 +318,6 @@ class TorchJoint(Joint):
 
 
 class TorchURDF(URDF):
-
     _ELEMENTS = {
         "links": (TorchLink, True, True),
         "joints": (TorchJoint, False, True),
@@ -408,7 +408,6 @@ class TorchURDF(URDF):
                     v = [t._from_xml(n, path, device) for n in vs]
             kwargs[a] = v
         return kwargs
-
 
     @classmethod
     def _parse(cls, node, path, lazy_load_meshes, device):
@@ -521,7 +520,7 @@ class TorchURDF(URDF):
             return {ell.name: fk[ell] for ell in fk}
         return fk
 
-    def visual_geometry_fk_batch(self, cfgs=None):
+    def visual_geometry_fk_batch(self, cfgs=None, use_names=False):
         """Computes the poses of the URDF's visual geometries using fk.
         Parameters
         ----------
@@ -545,8 +544,12 @@ class TorchURDF(URDF):
 
         fk = OrderedDict()
         for link in lfk:
+            if use_names:
+                assert len(link.visuals) <= 1
             for visual in link.visuals:
-                fk[visual.geometry] = torch.matmul(
-                    lfk[link], visual.origin.type_as(lfk[link])
-                )
+                if use_names:
+                    key = link.name
+                else:
+                    key = visual.geometry
+                fk[key] = torch.matmul(lfk[link], visual.origin.type_as(lfk[link]))
         return fk

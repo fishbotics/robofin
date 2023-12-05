@@ -1,70 +1,10 @@
-from enum import IntEnum
-
+"""
+Note, cannot use the constants for these functions. 
+The order of the outputs were painstakingly checked but could be wrong
+"""
 import numba
 import numpy as np
 from geometrout.maths import transform_in_place
-
-FrankaEefLinks = IntEnum(
-    "FrankaEefLinks",
-    [
-        "panda_link8",
-        "panda_hand",
-        "panda_grasptarget",
-        "right_gripper",
-        "panda_leftfinger",
-        "panda_rightfinger",
-    ],
-    start=0,
-)
-
-FrankaEefVisuals = IntEnum(
-    "FrankaEefVisuals",
-    [
-        "panda_hand",
-        "panda_leftfinger",
-        "panda_rightfinger",
-    ],
-    start=0,
-)
-
-FrankaArmVisuals = IntEnum(
-    "FrankaArmVisuals",
-    [
-        "panda_link0",
-        "panda_link1",
-        "panda_link2",
-        "panda_link3",
-        "panda_link4",
-        "panda_link5",
-        "panda_link6",
-        "panda_link7",
-        "panda_hand",
-        "panda_leftfinger",
-        "panda_rightfinger",
-    ],
-    start=0,
-)
-
-FrankaArmLinks = IntEnum(
-    "FrankaArmLinks",
-    [
-        "panda_link0",
-        "panda_link1",
-        "panda_link2",
-        "panda_link3",
-        "panda_link4",
-        "panda_link5",
-        "panda_link6",
-        "panda_link7",
-        "panda_link8",
-        "panda_hand",
-        "panda_grasptarget",
-        "right_gripper",
-        "panda_leftfinger",
-        "panda_rightfinger",
-    ],
-    start=0,
-)
 
 
 @numba.jit(nopython=True, cache=True)

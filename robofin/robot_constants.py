@@ -1,16 +1,79 @@
+from enum import IntEnum
 from pathlib import Path
 
 import numpy as np
 from geometrout import SE3, SO3
 
 
-class FrankaConstants:
-    urdf = str(Path(__file__).parent / "urdf" / "franka_panda" / "panda.urdf")
-    hd_urdf = str(Path(__file__).parent / "urdf" / "franka_panda" / "hd_panda.urdf")
-    # This can be a Path because it's only ever used from Python
-    point_cloud_cache = Path(__file__).parent / "cache" / "point_cloud" / "franka"
+class _FrankaConstants:
+    @property
+    def urdf(cls):
+        return cls._URDF
 
-    JOINT_LIMITS = np.array(
+    @property
+    def hd_urdf(cls):
+        return cls._HD_URDF
+
+    @property
+    def point_cloud_cache(cls):
+        return cls._POINT_CLOUD_CACHE
+
+    @property
+    def JOINT_LIMITS(cls):
+        return cls._JOINT_LIMITS
+
+    @property
+    def VELOCITY_LIMIT(cls):
+        return cls._VELOCITY_LIMIT
+
+    @property
+    def ACCELERATION_LIMIT(cls):
+        return cls._ACCELERATION_LIMIT
+
+    @property
+    def EEF_T_LIST(cls):
+        return cls._EEF_T_LIST
+
+    @property
+    def DOF(cls):
+        return cls._DOF
+
+    @property
+    def NEUTRAL(cls):
+        return cls._NEUTRAL
+
+    @property
+    def SPHERES(cls):
+        return cls._SPHERES
+
+    @property
+    def SELF_COLLISION_SPHERES(cls):
+        return cls._SELF_COLLISION_SPHERES
+
+    @property
+    def EEF_LINKS(cls):
+        return cls._EEF_LINKS
+
+    @property
+    def EEF_VISUAL_LINKS(cls):
+        return cls._EEF_VISUAL_LINKS
+
+    @property
+    def ARM_LINKS(cls):
+        return cls._ARM_LINKS
+
+    @property
+    def ARM_VISUAL_LINKS(cls):
+        return cls._ARM_VISUAL_LINKS
+
+    _URDF = str(Path(__file__).parent / "urdf" / "franka_panda" / "panda.urdf")
+
+    _HD_URDF = str(Path(__file__).parent / "urdf" / "franka_panda" / "hd_panda.urdf")
+
+    # This can be a Path because it's only ever used from Python
+    _POINT_CLOUD_CACHE = Path(__file__).parent / "cache" / "point_cloud" / "franka"
+
+    _JOINT_LIMITS = np.array(
         [
             (-2.8973, 2.8973),
             (-1.7628, 1.7628),
@@ -22,11 +85,13 @@ class FrankaConstants:
         ]
     )
 
-    VELOCITY_LIMIT = np.array([2.1750, 2.1750, 2.1750, 2.1750, 2.6100, 2.6100, 2.6100])
-    ACCELERATION_LIMIT = np.array([15.0, 7.5, 10.0, 12.5, 15.0, 20.0, 20.0])
-    DOF = 7
-    EFF_LIST = set(["panda_hand", "panda_link8", "right_gripper", "panda_grasptarget"])
-    EFF_T_LIST = {
+    _VELOCITY_LIMIT = np.array([2.1750, 2.1750, 2.1750, 2.1750, 2.6100, 2.6100, 2.6100])
+
+    _ACCELERATION_LIMIT = np.array([15.0, 7.5, 10.0, 12.5, 15.0, 20.0, 20.0])
+
+    _DOF = 7
+
+    _EEF_T_LIST = {
         ("panda_link8", "panda_hand"): SE3(
             np.zeros(3),
             np.array([0.9238795325113726, 0.0, 0.0, -0.3826834323648827]),
@@ -41,7 +106,8 @@ class FrankaConstants:
             np.array([0.0, 0.0, 0.1]), np.array([0.0, 0.0, 0.0, 1.0])
         ),
     }
-    NEUTRAL = np.array(
+
+    _NEUTRAL = np.array(
         [
             -0.017792060227770554,
             -0.7601235411041661,
@@ -52,8 +118,9 @@ class FrankaConstants:
             0.7534486589746342,
         ]
     )
+
     # Tuples of radius in meters and the corresponding links, values are centers on that link
-    SPHERES = [
+    _SPHERES = [
         (0.08, {"panda_link0": np.array([[0.0, 0.0, 0.05]])}),
         (
             0.06,
@@ -191,7 +258,7 @@ class FrankaConstants:
         ),
     ]
 
-    SELF_COLLISION_SPHERES = [
+    _SELF_COLLISION_SPHERES = [
         ("panda_link0", [-0.08, 0.0, 0.05], 0.06),
         ("panda_link0", [-0.0, 0.0, 0.05], 0.08),
         ("panda_link1", [0.0, -0.08, 0.0], 0.1),
@@ -252,9 +319,71 @@ class FrankaConstants:
         # ("panda_rightfinger", [0.0, -0.01, 0.034], 0.02),
     ]
 
+    _EEF_LINKS = IntEnum(
+        "FrankaEefLinks",
+        [
+            "panda_link8",
+            "panda_hand",
+            "panda_grasptarget",
+            "right_gripper",
+            "panda_leftfinger",
+            "panda_rightfinger",
+        ],
+        start=0,
+    )
 
-class RealFrankaConstants(FrankaConstants):
-    JOINT_LIMITS = np.array(
+    _EEF_VISUAL_LINKS = IntEnum(
+        "FrankaEefVisuals",
+        [
+            "panda_hand",
+            "panda_leftfinger",
+            "panda_rightfinger",
+        ],
+        start=0,
+    )
+
+    _ARM_VISUAL_LINKS = IntEnum(
+        "FrankaArmVisuals",
+        [
+            "panda_link0",
+            "panda_link1",
+            "panda_link2",
+            "panda_link3",
+            "panda_link4",
+            "panda_link5",
+            "panda_link6",
+            "panda_link7",
+            "panda_hand",
+            "panda_leftfinger",
+            "panda_rightfinger",
+        ],
+        start=0,
+    )
+
+    _ARM_LINKS = IntEnum(
+        "FrankaArmLinks",
+        [
+            "panda_link0",
+            "panda_link1",
+            "panda_link2",
+            "panda_link3",
+            "panda_link4",
+            "panda_link5",
+            "panda_link6",
+            "panda_link7",
+            "panda_link8",
+            "panda_hand",
+            "panda_grasptarget",
+            "right_gripper",
+            "panda_leftfinger",
+            "panda_rightfinger",
+        ],
+        start=0,
+    )
+
+
+class _RealFrankaConstants(_FrankaConstants):
+    _JOINT_LIMITS = np.array(
         [
             (-2.8973, 2.8973),
             (-1.7628, 1.7628),
@@ -267,13 +396,38 @@ class RealFrankaConstants(FrankaConstants):
     )
 
 
-class FrankaGripperConstants:
-    JOINT_LIMITS = None
-    DOF = 6
-    urdf = str(Path(__file__).parent / "urdf" / "panda_hand" / "panda.urdf")
-    fully_open_mesh = str(
+class _FrankaGripperConstants:
+    @property
+    def JOINT_LIMITS(cls):
+        return cls._JOINT_LIMITS
+
+    @property
+    def DOF(cls):
+        return cls._DOF
+
+    @property
+    def urdf(cls):
+        return cls._urdf
+
+    @property
+    def fully_open_mesh(cls):
+        return cls._fully_open_mesh
+
+    @property
+    def half_open_mesh(cls):
+        return cls._half_open_mesh
+
+    _JOINT_LIMITS = None
+    _DOF = 6
+    _urdf = str(Path(__file__).parent / "urdf" / "panda_hand" / "panda.urdf")
+    _fully_open_mesh = str(
         Path(__file__).parent / "standalone_meshes" / "open_gripper.obj"
     )
-    half_open_mesh = str(
+    _half_open_mesh = str(
         Path(__file__).parent / "standalone_meshes" / "half_open_gripper.obj"
     )
+
+
+FrankaConstants = _FrankaConstants()
+RealFrankaConstants = _RealFrankaConstants()
+FrankaGripperConstants = _FrankaGripperConstants()

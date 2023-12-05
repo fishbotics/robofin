@@ -5,8 +5,6 @@ from geometrout import SE3, Sphere
 from geometrout.maths import transform_in_place
 
 from robofin.kinematics.numba import (
-    FrankaArmLinks,
-    FrankaEefLinks,
     eef_pose_to_link8,
     franka_arm_link_fk,
     franka_eef_link_fk,
@@ -83,7 +81,9 @@ class FrankaCollisionSpheres:
         fk_points = []
         for link_name, centers in self.points:
             fk_points.append(
-                transform_in_place(np.copy(centers), fk[FrankaArmLinks[link_name]])
+                transform_in_place(
+                    np.copy(centers), fk[FrankaConstants.ARM_LINKS[link_name]]
+                )
             )
         transformed_centers = np.concatenate(fk_points, axis=0)
         points_matrix = np.tile(
@@ -100,7 +100,10 @@ class FrankaCollisionSpheres:
         for link_name, center, radius in FrankaConstants.SELF_COLLISION_SPHERES:
             spheres.append(
                 Sphere(
-                    (fk[FrankaArmLinks[link_name]] @ np.array([*center, 1]))[:3], radius
+                    (fk[FrankaConstants.ARM_LINKS[link_name]] @ np.array([*center, 1]))[
+                        :3
+                    ],
+                    radius,
                 )
             )
         return spheres
@@ -115,7 +118,9 @@ class FrankaCollisionSpheres:
             if not with_base_link and link_name == "panda_link0":
                 continue
             centers.append(
-                transform_in_place(np.copy(info.centers), fk[FrankaArmLinks[link_name]])
+                transform_in_place(
+                    np.copy(info.centers), fk[FrankaConstants.ARM_LINKS[link_name]]
+                )
             )
             radii.append(info.radii)
         return SphereInfo(radii=np.concatenate(radii), centers=np.concatenate(centers))
@@ -143,7 +148,9 @@ class FrankaCollisionSpheres:
         ]:
             info = self.cspheres[link_name]
             centers.append(
-                transform_in_place(np.copy(info.centers), fk[FrankaEefLinks[link_name]])
+                transform_in_place(
+                    np.copy(info.centers), fk[FrankaConstants.EEF_LINKS[link_name]]
+                )
             )
             radii.append(info.radii)
         return SphereInfo(radii=np.concatenate(radii), centers=np.concatenate(centers))

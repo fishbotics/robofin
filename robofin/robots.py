@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import numpy as np
 from geometrout import SE3
 from ikfast_franka_panda import get_fk, get_ik
@@ -43,7 +41,7 @@ class FrankaRobot:
         Returns the SE3 frame of the end effector
         """
         assert (
-            eff_frame in cls.constants.EFF_LIST
+            eff_frame in cls.constants.EEF_LINKS.__members__
         ), "Default FK only calculated for a valid end effector frame"
         pos, rot = get_fk(config)
         mat = np.eye(4)
@@ -54,17 +52,17 @@ class FrankaRobot:
         elif eff_frame == "panda_hand":
             return (
                 SE3.from_matrix(mat)
-                * cls.constants.EFF_T_LIST[("panda_link8", "panda_hand")]
+                * cls.constants.EEF_T_LIST[("panda_link8", "panda_hand")]
             )
         elif eff_frame == "right_gripper":
             return (
                 SE3.from_matrix(mat)
-                * cls.constants.EFF_T_LIST[("panda_link8", "right_gripper")]
+                * cls.constants.EEF_T_LIST[("panda_link8", "right_gripper")]
             )
         else:
             return (
                 SE3.from_matrix(mat)
-                * cls.constants.EFF_T_LIST[("panda_link8", "panda_grasptarget")]
+                * cls.constants.EEF_T_LIST[("panda_link8", "panda_grasptarget")]
             )
 
     @classmethod
@@ -77,17 +75,17 @@ class FrankaRobot:
         :return: Typically 4 solutions to IK
         """
         assert (
-            eff_frame in cls.constants.EFF_LIST
+            eff_frame in cls.constants.EEF_LIST
         ), "IK only calculated for a valid end effector frame"
         if eff_frame == "right_gripper":
             pose = (
                 pose
-                * cls.constants.EFF_T_LIST[("panda_link8", "right_gripper")].inverse
+                * cls.constants.EEF_T_LIST[("panda_link8", "right_gripper")].inverse
             )
         elif eff_frame == "panda_grasptarget":
             pose = (
                 pose
-                * cls.constants.EFF_T_LIST[("panda_link8", "panda_grasptarget")].inverse
+                * cls.constants.EEF_T_LIST[("panda_link8", "panda_grasptarget")].inverse
             )
         rot = pose.so3.matrix.tolist()
         pos = pose.xyz

@@ -80,20 +80,20 @@ class MeshcatFrankaGripper:
 
     def convert_pose(self, pose, frame):
         if frame == "panda_link8":
-            pose = pose * FrankaConstants.EFF_T_LIST[("panda_link8", "panda_hand")]
+            pose = pose * FrankaConstants.EEF_T_LIST[("panda_link8", "panda_hand")]
         elif frame == "right_gripper":
             pose = (
                 pose
-                * FrankaConstants.EFF_T_LIST[("panda_hand", "right_gripper")].inverse
+                * FrankaConstants.EEF_T_LIST[("panda_hand", "right_gripper")].inverse
             )
             pass
         elif frame == "panda_grasptarget":
             pose = (
                 pose
-                * FrankaConstants.EFF_T_LIST[
+                * FrankaConstants.EEF_T_LIST[
                     ("panda_link8", "panda_grasptarget")
                 ].inverse
-                * FrankaConstants.EFF_T_LIST[("panda_link8", "panda_hand")]
+                * FrankaConstants.EEF_T_LIST[("panda_link8", "panda_hand")]
             )
         else:
             assert frame == "panda_hand"
