@@ -106,7 +106,7 @@ def test_deterministic_torch_sampling():
     )
 
 
-def test_deterministic_gen_cache():
+def test_deterministic_compare():
     sampler1 = samplers.NumpyFrankaSampler(
         num_robot_points=4096, num_eef_points=128, use_cache=True, with_base_link=True
     )
@@ -133,10 +133,15 @@ def test_deterministic_gen_cache():
     assert compare_point_clouds(eef_samples1, eef_samples2.squeeze().numpy())
 
 
-def test_deterministic_compare():
+def test_deterministic_gen_cache():
     sampler1 = samplers.NumpyFrankaSampler(
         num_robot_points=2048, num_eef_points=128, use_cache=True, with_base_link=True
     )
+    samples1 = sampler1.sample(
+        FrankaConstants.NEUTRAL,
+        0.04,
+    )
+
     sampler2 = samplers.NumpyFrankaSampler(
         num_robot_points=1024, num_eef_points=128, use_cache=True, with_base_link=True
     )

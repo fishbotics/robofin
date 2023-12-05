@@ -125,14 +125,23 @@ class SamplerBase:
             for link in links
         ]
         areas = [mesh.bounding_box_oriented.area for mesh in meshes]
-        num_points = np.round(N * np.array(areas) / np.sum(areas))
+        num_points = np.round(N * np.array(areas) / np.sum(areas)).astype(int)
+        rounding_error = N - np.sum(num_points)
+        if rounding_error > 0:
+            while rounding_error > 0:
+                jj = np.random.choice(np.arange(len(num_points)))
+                num_points[jj] += 1
+                rounding_error = N - np.sum(num_points)
+        elif rounding_error < 0:
+            while rounding_error < 0:
+                jj = np.random.choice(np.arange(len(num_points)))
+                num_points[jj] -= 1
+                rounding_error = N - np.sum(num_points)
 
         points = {}
         normals = {}
         for ii, mesh in enumerate(meshes):
-            link_pc, face_indices = trimesh.sample.sample_surface(
-                mesh, int(num_points[ii])
-            )
+            link_pc, face_indices = trimesh.sample.sample_surface(mesh, num_points[ii])
             points[links[ii].name] = link_pc
             normals[f"{links[ii].name}"] = self._init_normals(
                 mesh, link_pc, face_indices
