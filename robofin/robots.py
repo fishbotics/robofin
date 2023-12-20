@@ -75,7 +75,7 @@ class FrankaRobot:
         :return: Typically 4 solutions to IK
         """
         assert (
-            eff_frame in cls.constants.EEF_LIST
+            eff_frame in cls.constants.EEF_LINKS.__members__
         ), "IK only calculated for a valid end effector frame"
         if eff_frame == "right_gripper":
             pose = (
