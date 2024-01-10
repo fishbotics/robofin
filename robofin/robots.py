@@ -130,12 +130,12 @@ class FrankaRobot:
         cooo,
         primitive_arrays,
         buffer=0.0,
-        frame="right_gripper",
+        eff_frame="right_gripper",
         retries=1000,
         bad_state_callback=lambda x: False,
     ):
         for i in range(retries + 1):
-            samples = cls.random_ik(pose, frame)
+            samples = cls.random_ik(pose, eff_frame)
             for sample in samples:
                 if not (
                     franka_arm_collides_fast(
