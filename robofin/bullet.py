@@ -673,7 +673,7 @@ class Bullet:
         if finite_depth:
             pc = pc[np.isfinite(pc[:, 0]), :]
         capture_camera = camera_T_world.inverse * SE3(
-            np.array([0, 0, 0]), np.array([0, 1, 0, 0])
+            np.array([0.0, 0.0, 0.0]), np.array([0.0, 1.0, 0.0, 0.0])
         )
         pc = pc[~np.all(pc == 0, axis=1)]
         transform_point_cloud(pc, capture_camera.matrix, in_place=True)
@@ -683,13 +683,15 @@ class Bullet:
         """
         Generic function to load a robot.
         """
-        if robot_type == FrankaRobot:
+        if issubclass(robot_type, FrankaRobot):
             robot = BulletFranka(self.clid, hd, **kwargs)
-        elif robot_type == FrankaGripper:
+        elif issubclass(robot_type, FrankaGripper):
             if collision_free:
                 robot = VisualGripper(self.clid, **kwargs)
             else:
                 robot = BulletFrankaGripper(self.clid, **kwargs)
+        else:
+            raise NotImplementedError(f"Cannot load robot of type {robot_type}")
         self.robots[robot.id] = robot
         return robot
 

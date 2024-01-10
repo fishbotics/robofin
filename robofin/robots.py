@@ -87,6 +87,12 @@ class FrankaRobot:
                 pose
                 * cls.constants.EEF_T_LIST[("panda_link8", "panda_grasptarget")].inverse
             )
+        elif eff_frame == "panda_hand":
+            pose = (
+                pose * cls.constants.EEF_T_LIST[("panda_link8", "panda_hand")].inverse
+            )
+        else:
+            raise NotImplementedError(f"IK not implemented for eff frame {eff_frame}")
         rot = pose.so3.matrix.tolist()
         pos = pose.xyz
         assert (
