@@ -237,6 +237,7 @@ class Meshcat:
         self.cuboids = []
         self.cylinders = []
         self.poses = []
+        self.point_clouds = []
 
     def _increment_type(self, item_type):
         if len(item_type) == 0:
@@ -254,6 +255,38 @@ class Meshcat:
         franka = MeshcatFranka(franka_idx, self.vis)
         self.frankas.append(franka)
         return franka
+
+    def load_point_cloud(self, pc, colors=None, size=0.01):
+        idx = self._increment_type(self.point_clouds)
+        if pc.shape[0] == 3:
+            if pc.shape[1] == 3:
+                print("Cannot deduce point cloud shape. Assuming its (3, N).")
+            if colors is None:
+                colors = np.array([0.0, 0.0, 0.0])
+            if colors.ndim == 1:
+                colors = np.tile(colors[:, None], (1, pc.shape[1]))
+        elif pc.shape[1] == 3:
+            if colors is None:
+                colors = np.array([0.0, 0.0, 0.0])
+            if colors.ndim == 1:
+                colors = np.tile(colors[None, :], (pc.shape[0], 1))
+            pc = pc.T
+            colors = colors.T
+        else:
+            raise NotImplementedError("Point cloud not well formed")
+        assert (
+            colors.shape == pc.shape
+        ), f"Mismatched pc and color shapes: {pc.shape} vs {colors.shape}"
+        key = f"point_cloud/{idx}"
+        print(pc.shape)
+        print(colors.shape)
+        self.vis[f"point_cloud/{idx}"].set_object(
+            meshcat.geometry.PointCloud(pc, colors, size=size)
+        )
+        return key
+
+    def delete_object(self, key):
+        self.vis[key].delete()
 
     def load_gripper(self):
         if not self.grippers:
