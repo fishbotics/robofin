@@ -585,19 +585,7 @@ class Bullet:
             "target": params[11],
         }
 
-    def get_camera_images(
-        self,
-        camera_T_world,
-        width=640,
-        height=480,
-        fx=616.36529541,
-        fy=616.20294189,
-        cx=310.25881958,
-        cy=310.25881958,
-        near=0.01,
-        far=10,
-        scale=True,
-    ):
+    def get_projection_matrix(self, width, height, fx, fy, cx, cy, near, far):
         projection_matrix = (
             2.0 * fx / width,
             0.0,
@@ -615,6 +603,24 @@ class Bullet:
             0.0,
             2.0 * far * near / (near - far),
             0.0,
+        )
+        return projection_matrix
+
+    def get_camera_images(
+        self,
+        camera_T_world,
+        width=640,
+        height=480,
+        fx=616.36529541,
+        fy=616.20294189,
+        cx=310.25881958,
+        cy=310.25881958,
+        near=0.01,
+        far=10,
+        scale=True,
+    ):
+        projection_matrix = self.get_projection_matrix(
+            width, height, fx, fy, cx, cy, near, far
         )
         view_matrix = camera_T_world.matrix.T.reshape(16)
         _, _, rgb, depth, seg = p.getCameraImage(
