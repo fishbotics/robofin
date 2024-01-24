@@ -133,7 +133,9 @@ class FrankaRobot:
         eff_frame="right_gripper",
         retries=1000,
         bad_state_callback=lambda x: False,
+        choose_close_to=None,
     ):
+        options = []
         for i in range(retries + 1):
             samples = cls.random_ik(pose, eff_frame)
             for sample in samples:
@@ -143,7 +145,13 @@ class FrankaRobot:
                     )
                     or bad_state_callback(sample)
                 ):
-                    return sample
+                    if choose_close_to is None:
+                        return sample
+                    options.append(sample)
+        if len(options):
+            return options[
+                np.argmin([np.linalg.norm(o - choose_close_to) for o in options])
+            ]
         return None
 
 
