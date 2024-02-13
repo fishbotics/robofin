@@ -27,7 +27,7 @@ def axis_angle(axis, angle):
     return M
 
 
-# @torch.compile
+@torch.compile
 def franka_eef_link_fk(prismatic_joint: float, base_pose: torch.Tensor) -> torch.Tensor:
     """
     A fast Torch-based FK method for the Franka Panda
@@ -122,7 +122,7 @@ def franka_eef_link_fk(prismatic_joint: float, base_pose: torch.Tensor) -> torch
     return poses
 
 
-# @torch.compile
+@torch.compile
 def franka_eef_visual_fk(
     prismatic_joint: float, base_pose: torch.Tensor
 ) -> torch.Tensor:
@@ -160,7 +160,7 @@ def franka_eef_visual_fk(
     return poses
 
 
-# @torch.compile
+@torch.compile
 def franka_arm_link_fk(
     cfg: torch.Tensor, prismatic_joint: float, base_pose: torch.Tensor
 ) -> torch.Tensor:
@@ -292,37 +292,32 @@ def franka_arm_link_fk(
         cfg = cfg.unsqueeze(0)
         squeeze = True
     B = cfg.size(0)
-    poses = torch.zeros((B, 14, 4, 4)).type_as(cfg)
-    # Base link is origin
-    poses[:, 0, :, :] = base_pose
-    # panda_link0 - panda_link7 have revolute joints in simple chain
+    poses = [base_pose.expand(B, -1, -1)]
     for i in range(7):
-        poses[:, i + 1, :, :] = torch.matmul(
-            poses[:, i],
+        pose = torch.matmul(
+            poses[-1],
             torch.matmul(joint_origins[i], axis_angle(joint_axes[i], cfg[:, i])),
         )
+        poses.append(pose)
     # panda_link8 is attached via fixed joint to panda_link7
-    poses[:, 8, :, :] = torch.matmul(poses[:, 7], joint_origins[7])
+    poses.append(torch.matmul(poses[-1], joint_origins[7]))
     # panda_hand is attached via fixed joint to panda_link8
-    poses[:, 9, :, :] = torch.matmul(poses[:, 8], joint_origins[8])
+    poses.append(torch.matmul(poses[-1], joint_origins[8]))
     # panda_grasptarget is attached via fixed joint to panda_hand
-    poses[:, 10, :, :] = torch.matmul(poses[:, 9], joint_origins[9])
+    poses.append(torch.matmul(poses[-1], joint_origins[9]))
     # right_gripper is attached via fixed joint to panda_link8
-    poses[:, 11, :, :] = torch.matmul(poses[:, 8], joint_origins[10])
+    poses.append(torch.matmul(poses[8], joint_origins[10]))
 
     # panda_leftfinger is a prismatic joint connected to panda_hand
     t_leftfinger = torch.eye(4).type_as(cfg)
     t_leftfinger[:3, 3] = joint_axes[11] * prismatic_joint
-    poses[:, 12, :, :] = torch.matmul(
-        poses[:, 9], torch.matmul(joint_origins[11], t_leftfinger)
-    )
+    poses.append(torch.matmul(poses[9], torch.matmul(joint_origins[11], t_leftfinger)))
 
     # panda_rightfinger is a prismatic joint connected to panda_hand
     t_rightfinger = torch.eye(4).type_as(cfg)
     t_rightfinger[:3, 3] = joint_axes[12] * prismatic_joint
-    poses[:, 13, :, :] = torch.matmul(
-        poses[:, 9], torch.matmul(joint_origins[12], t_rightfinger)
-    )
+    poses.append(torch.matmul(poses[9], torch.matmul(joint_origins[12], t_rightfinger)))
+    poses = torch.stack(poses, dim=1)
 
     if squeeze:
         return poses.squeeze(0)
@@ -330,7 +325,7 @@ def franka_arm_link_fk(
     return poses
 
 
-# @torch.compile
+@torch.compile
 def franka_arm_visual_fk(
     cfg: torch.Tensor, prismatic_joint: float, base_pose: torch.Tensor
 ) -> torch.Tensor:
@@ -376,7 +371,7 @@ def franka_arm_visual_fk(
     return poses
 
 
-# @torch.compile
+@torch.compile
 def eef_pose_to_link8(pose, frame):
     if frame == "right_gripper":
         pose = torch.matmul(
