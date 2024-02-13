@@ -2,7 +2,6 @@ import numpy as np
 from geometrout import SE3
 from ikfast_franka_panda import get_fk, get_ik
 
-from robofin.collision import franka_arm_collides_fast
 from robofin.robot_constants import (
     FrankaConstants,
     FrankaGripperConstants,
@@ -140,8 +139,8 @@ class FrankaRobot:
             samples = cls.random_ik(pose, eff_frame)
             for sample in samples:
                 if not (
-                    franka_arm_collides_fast(
-                        sample, prismatic_joint, cooo, primitive_arrays, buffer
+                    cooo.franka_arm_collides_fast(
+                        sample, prismatic_joint, primitive_arrays, buffer
                     )
                     or bad_state_callback(sample)
                 ):
