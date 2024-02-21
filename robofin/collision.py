@@ -75,7 +75,7 @@ class FrankaCollisionSpheres:
                     continue
                 self.collision_matrix[idx1, idx2] = radius1 + radius2
 
-    def has_self_collision(self, config, prismatic_joint):
+    def has_self_collision(self, config, prismatic_joint, buffer=0.0):
         fk = nfk.franka_arm_link_fk(config, prismatic_joint, np.eye(4))
         fk_points = []
         for link_name, centers in self.points:
@@ -91,7 +91,7 @@ class FrankaCollisionSpheres:
         distances = np.linalg.norm(
             points_matrix - points_matrix.transpose((1, 0, 2)), axis=2
         )
-        return np.any(distances < self.collision_matrix)
+        return np.any(distances < self.collision_matrix + buffer)
 
     def self_collision_spheres(self, config, prismatic_joint):
         fk = nfk.franka_arm_link_fk(config, prismatic_joint, np.eye(4))
@@ -163,11 +163,15 @@ class FrankaCollisionSpheres:
         q,
         prismatic_joint,
         primitives,
+        *,
         buffer=0.0,
+        self_collision_buffer=0.0,
         check_self=True,
         with_base_link=False,
     ):
-        if check_self and self.has_self_collision(q, prismatic_joint):
+        if check_self and self.has_self_collision(
+            q, prismatic_joint, self_collision_buffer
+        ):
             return True
         cspheres = self.csphere_info(q, prismatic_joint, with_base_link=with_base_link)
         for p in primitives:
@@ -180,11 +184,15 @@ class FrankaCollisionSpheres:
         q,
         prismatic_joint,
         primitive_arrays,
+        *,
         buffer=0.0,
+        self_collision_buffer=0.0,
         check_self=True,
         with_base_link=False,
     ):
-        if check_self and self.has_self_collision(q, prismatic_joint):
+        if check_self and self.has_self_collision(
+            q, prismatic_joint, self_collision_buffer
+        ):
             return True
         cspheres = self.csphere_info(q, prismatic_joint, with_base_link=with_base_link)
         for arr in primitive_arrays:
@@ -285,7 +293,7 @@ class TorchFrankaCollisionSpheres:
                     continue
                 self.collision_matrix[idx1, idx2] = radius1 + radius2
 
-    def has_self_collision(self, config, prismatic_joint):
+    def has_self_collision(self, config, prismatic_joint, buffer=0.0):
         squeeze = False
         if config.ndim == 1:
             config = config[None, :]
@@ -312,7 +320,8 @@ class TorchFrankaCollisionSpheres:
         self_collisions = torch.any(
             (distances < self.collision_matrix[None, ...]).reshape(
                 distances.size(0), -1
-            ),
+            )
+            + buffer,
             dim=1,
         )
         if squeeze:
@@ -398,7 +407,9 @@ class TorchFrankaCollisionSpheres:
         q,
         prismatic_joint,
         primitives,
+        *,
         buffer=0.0,
+        self_collision_buffer=0.0,
         check_self=True,
         with_base_link=False,
     ):
@@ -410,7 +421,9 @@ class TorchFrankaCollisionSpheres:
             squeeze = True
         collisions = torch.zeros((q.size(0),), dtype=bool, device=q.device)
         if check_self:
-            self_collisions = self.has_self_collision(q, prismatic_joint)
+            self_collisions = self.has_self_collision(
+                q, prismatic_joint, self_collision_buffer
+            )
             collisions = torch.logical_or(self_collisions, collisions)
         cspheres = self.csphere_info(q, prismatic_joint, with_base_link=with_base_link)
         for p in primitives:
@@ -427,7 +440,9 @@ class TorchFrankaCollisionSpheres:
         q,
         prismatic_joint,
         primitives,
+        *,
         buffer=0.0,
+        self_collision_buffer=0.0,
         check_self=True,
         with_base_link=False,
     ):
@@ -446,9 +461,9 @@ class TorchFrankaCollisionSpheres:
         )
         flat_q = q.reshape(B * T, -1)
         if check_self:
-            self_collisions = self.has_self_collision(flat_q, prismatic_joint).reshape(
-                B, T
-            )
+            self_collisions = self.has_self_collision(
+                flat_q, prismatic_joint, self_collision_buffer
+            ).reshape(B, T)
             collisions = torch.logical_or(self_collisions, collisions)
         cspheres = self.csphere_info(
             flat_q, prismatic_joint, with_base_link=with_base_link
