@@ -65,7 +65,7 @@ class FrankaRobot:
             )
 
     @classmethod
-    def ik(cls, pose, panda_link7, eff_frame="right_gripper"):
+    def ik(cls, pose, panda_link7, eff_frame="right_gripper", joint_range_scalar=1.0):
         """
         :param pose: SE3 pose expressed in specified end effector frame
         :param panda_link7: Value for the joint panda_link7, other IK can be calculated with this joint value set.
@@ -73,6 +73,7 @@ class FrankaRobot:
         :param eff_frame: Desired end effector frame, must be among [panda_link8, right_gripper, panda_grasptarget]
         :return: Typically 4 solutions to IK
         """
+        joint_limits = joint_range_scalar * cls.constants.JOINT_LIMITS
         assert (
             eff_frame in cls.constants.EEF_LINKS.__members__
         ), "IK only calculated for a valid end effector frame"
@@ -95,29 +96,27 @@ class FrankaRobot:
         rot = pose.so3.matrix.tolist()
         pos = pose.xyz
         assert (
-            panda_link7 >= cls.constants.JOINT_LIMITS[-1, 0]
-            and panda_link7 <= cls.constants.JOINT_LIMITS[-1, 1]
-        ), f"Value for floating joint must be within range {cls.constants.JOINT_LIMITS[-1, :].tolist()}"
+            panda_link7 >= joint_limits[-1, 0] and panda_link7 <= joint_limits[-1, 1]
+        ), f"Value for floating joint must be within range {joint_limits[-1, :].tolist()}"
         solutions = [np.asarray(s) for s in get_ik(pos, rot, [panda_link7])]
         return [
             s
             for s in solutions
-            if (
-                np.all(s >= cls.constants.JOINT_LIMITS[:, 0])
-                and np.all(s <= cls.constants.JOINT_LIMITS[:, 1])
-            )
+            if (np.all(s >= joint_limits[:, 0]) and np.all(s <= joint_limits[:, 1]))
         ]
 
     @classmethod
-    def random_configuration(cls):
-        limits = cls.constants.JOINT_LIMITS
+    def random_configuration(cls, joint_range_scalar=1.0):
+        limits = joint_range_scalar * cls.constants.JOINT_LIMITS
         return (limits[:, 1] - limits[:, 0]) * (np.random.rand(7)) + limits[:, 0]
 
     @classmethod
-    def random_ik(cls, pose, eff_frame="right_gripper"):
-        config = cls.random_configuration()
+    def random_ik(cls, pose, eff_frame="right_gripper", joint_range_scalar=1.0):
+        config = cls.random_configuration(joint_range_scalar)
         try:
-            return cls.ik(pose, config[-1], eff_frame)
+            return cls.ik(
+                pose, config[-1], eff_frame, joint_range_scalar=joint_range_scalar
+            )
         except Exception as e:
             raise Exception(f"IK failed with {pose}")
 
@@ -128,7 +127,9 @@ class FrankaRobot:
         prismatic_joint,
         cooo,
         primitive_arrays,
-        buffer=0.0,
+        scene_buffer=0.0,
+        self_collision_buffer=0.0,
+        joint_range_scalar=1.0,
         eff_frame="right_gripper",
         retries=1000,
         bad_state_callback=lambda x: False,
@@ -136,11 +137,15 @@ class FrankaRobot:
     ):
         options = []
         for i in range(retries + 1):
-            samples = cls.random_ik(pose, eff_frame)
+            samples = cls.random_ik(pose, eff_frame, joint_range_scalar)
             for sample in samples:
                 if not (
                     cooo.franka_arm_collides_fast(
-                        sample, prismatic_joint, primitive_arrays, buffer
+                        sample,
+                        prismatic_joint,
+                        primitive_arrays,
+                        scene_buffer=scene_buffer,
+                        self_collision_buffer=self_collision_buffer,
                     )
                     or bad_state_callback(sample)
                 ):

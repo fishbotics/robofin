@@ -164,7 +164,7 @@ class FrankaCollisionSpheres:
         prismatic_joint,
         primitives,
         *,
-        buffer=0.0,
+        scene_buffer=0.0,
         self_collision_buffer=0.0,
         check_self=True,
         with_base_link=False,
@@ -175,7 +175,7 @@ class FrankaCollisionSpheres:
             return True
         cspheres = self.csphere_info(q, prismatic_joint, with_base_link=with_base_link)
         for p in primitives:
-            if np.any(p.sdf(cspheres.centers) < cspheres.radii + buffer):
+            if np.any(p.sdf(cspheres.centers) < cspheres.radii + scene_buffer):
                 return True
         return False
 
@@ -185,7 +185,7 @@ class FrankaCollisionSpheres:
         prismatic_joint,
         primitive_arrays,
         *,
-        buffer=0.0,
+        scene_buffer=0.0,
         self_collision_buffer=0.0,
         check_self=True,
         with_base_link=False,
@@ -196,23 +196,25 @@ class FrankaCollisionSpheres:
             return True
         cspheres = self.csphere_info(q, prismatic_joint, with_base_link=with_base_link)
         for arr in primitive_arrays:
-            if np.any(arr.scene_sdf(cspheres.centers) < cspheres.radii + buffer):
+            if np.any(arr.scene_sdf(cspheres.centers) < cspheres.radii + scene_buffer):
                 return True
         return False
 
-    def franka_eef_collides(self, pose, prismatic_joint, primitives, frame, buffer=0.0):
+    def franka_eef_collides(
+        self, pose, prismatic_joint, primitives, frame, scene_buffer=0.0
+    ):
         cspheres = self.eef_csphere_info(pose, prismatic_joint, frame)
         for p in primitives:
-            if np.any(p.sdf(cspheres.centers) < cspheres.radii + buffer):
+            if np.any(p.sdf(cspheres.centers) < cspheres.radii + scene_buffer):
                 return True
         return False
 
     def franka_eef_collides_fast(
-        self, pose, prismatic_joint, primitive_arrays, frame, buffer=0.0
+        self, pose, prismatic_joint, primitive_arrays, frame, scene_buffer=0.0
     ):
         cspheres = self.eef_csphere_info(pose, prismatic_joint, frame)
         for arr in primitive_arrays:
-            if np.any(arr.scene_sdf(cspheres.centers) < cspheres.radii + buffer):
+            if np.any(arr.scene_sdf(cspheres.centers) < cspheres.radii + scene_buffer):
                 return True
         return False
 
@@ -408,7 +410,7 @@ class TorchFrankaCollisionSpheres:
         prismatic_joint,
         primitives,
         *,
-        buffer=0.0,
+        scene_buffer=0.0,
         self_collision_buffer=0.0,
         check_self=True,
         with_base_link=False,
@@ -428,7 +430,7 @@ class TorchFrankaCollisionSpheres:
         cspheres = self.csphere_info(q, prismatic_joint, with_base_link=with_base_link)
         for p in primitives:
             p_collisions = torch.any(
-                p.sdf(cspheres.centers) < cspheres.radii + buffer, dim=1
+                p.sdf(cspheres.centers) < cspheres.radii + scene_buffer, dim=1
             )
             collisions = torch.logical_or(p_collisions, collisions)
         if squeeze:
@@ -441,7 +443,7 @@ class TorchFrankaCollisionSpheres:
         prismatic_joint,
         primitives,
         *,
-        buffer=0.0,
+        scene_buffer=0.0,
         self_collision_buffer=0.0,
         check_self=True,
         with_base_link=False,
@@ -475,13 +477,15 @@ class TorchFrankaCollisionSpheres:
 
         for p in primitives:
             p_collisions = torch.any(
-                p.sdf_sequence(centers) < radii + buffer,
+                p.sdf_sequence(centers) < radii + scene_buffer,
                 dim=2,
             )
             collisions = torch.logical_or(p_collisions, collisions)
         return collisions
 
-    def franka_eef_collides(self, pose, prismatic_joint, primitives, frame, buffer=0.0):
+    def franka_eef_collides(
+        self, pose, prismatic_joint, primitives, frame, scene_buffer=0.0
+    ):
         if not isinstance(primitives, list):
             primitives = [primitives]
         squeeze = False
@@ -492,7 +496,7 @@ class TorchFrankaCollisionSpheres:
         cspheres = self.eef_csphere_info(pose, prismatic_joint, frame)
         for p in primitives:
             p_collisions = torch.any(
-                p.sdf(cspheres.centers) < cspheres.radii + buffer, dim=1
+                p.sdf(cspheres.centers) < cspheres.radii + scene_buffer, dim=1
             )
             collisions = torch.logical_or(p_collisions, collisions)
         if squeeze:
