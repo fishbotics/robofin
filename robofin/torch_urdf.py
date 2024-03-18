@@ -2,20 +2,29 @@ import os
 from collections import OrderedDict
 
 import numpy as np
+import six
 import torch
+import trimesh
 from lxml import etree as ET
 from urchin import (
     URDF,
+    Box,
     Collision,
+    Cylinder,
+    Geometry,
     Inertial,
     Joint,
     Link,
     Material,
+    Mesh,
+    Sphere,
     Transmission,
     URDFTypeWithMesh,
     Visual,
 )
-from urchin.utils import parse_origin
+from urchin.utils import load_meshes, parse_origin
+
+from robofin.point_cloud_tools import transform_point_cloud
 
 
 def configure_origin(value, device=None):
@@ -37,10 +46,106 @@ def configure_origin(value, device=None):
     return value.to(device)
 
 
+class TorchMesh(Mesh):
+    def __init__(
+        self,
+        filename,
+        combine,
+        scale=None,
+        meshes=None,
+        lazy_filename=None,
+        device=None,
+    ):
+        self.device = device
+        super().__init__(filename, combine, scale, meshes, lazy_filename)
+        if self.meshes is not None:
+            self.vertices = [
+                torch.as_tensor(m.vertices, device=self.device) for m in self.meshes
+            ]
+
+    @property
+    def meshes(self):
+        """list of :class:`~trimesh.base.Trimesh` : The triangular meshes
+        that represent this object.
+        """
+        if self.lazy_filename is not None and self._meshes is None:
+            self.meshes = self._load_and_combine_meshes(
+                self.lazy_filename, self.combine
+            )
+            self.vertices = [
+                torch.as_tensor(m.vertices, device=self.device) for m in self.meshes
+            ]
+        return self._meshes
+
+    @meshes.setter
+    def meshes(self, value):
+        if self.lazy_filename is not None and value is None:
+            self._meshes = None
+        elif isinstance(value, six.string_types):
+            value = self._load_and_combine_meshes(value, self.combine)
+        elif isinstance(value, (list, tuple, set, np.ndarray)):
+            value = list(value)
+            if len(value) == 0:
+                raise ValueError("Mesh must have at least one trimesh.Trimesh")
+            for m in value:
+                if not isinstance(m, trimesh.Trimesh):
+                    raise TypeError(
+                        "Mesh requires a trimesh.Trimesh or a " "list of them"
+                    )
+        elif isinstance(value, trimesh.Trimesh):
+            value = [value]
+        else:
+            raise TypeError("Mesh requires a trimesh.Trimesh")
+        self._meshes = value
+        self.vertices = [
+            torch.as_tensor(m.vertices, device=self.device) for m in self._meshes
+        ]
+
+    @property
+    def scale(self):
+        """(3,) float : A scaling for the mesh along its local XYZ axes."""
+        return self._scale
+
+    @scale.setter
+    def scale(self, value):
+        if value is not None:
+            value = torch.as_tensor(value, device=self.device)
+        self._scale = value
+
+
+class TorchGeometry(Geometry):
+    _ELEMENTS = {
+        "box": (Box, False, False),
+        "cylinder": (Cylinder, False, False),
+        "sphere": (Sphere, False, False),
+        "mesh": (TorchMesh, False, False),
+    }
+
+    def __init__(self, box=None, cylinder=None, sphere=None, mesh=None, device=None):
+        self.device = device
+        super().__init__(box, cylinder, sphere, mesh)
+
+
 class TorchVisual(Visual):
+    _ELEMENTS = {
+        "geometry": (TorchGeometry, True, False),
+        "material": (Material, False, False),
+    }
+
     def __init__(self, geometry, name=None, origin=None, material=None, device=None):
         self.device = device
         super().__init__(geometry, name, origin, material)
+
+    @property
+    def geometry(self):
+        """:class:`.Geometry` : The geometry of this element."""
+        return self._geometry
+
+    @geometry.setter
+    def geometry(self, value):
+        if not isinstance(value, TorchGeometry):
+            raise TypeError("Must set geometry with TorchGeometry object")
+        self._geometry = value
 
     @property
     def origin(self):
@@ -60,11 +165,26 @@ class TorchVisual(Visual):
 
 
 class TorchCollision(Collision):
+    _ELEMENTS = {
+        "geometry": (TorchGeometry, True, False),
+    }
+
+    @property
+    def geometry(self):
+        """:class:`.Geometry` : The geometry of this element."""
+        return self._geometry
+
+    @geometry.setter
+    def geometry(self, value):
+        if not isinstance(value, TorchGeometry):
+            raise TypeError("Must set geometry with Geometry object")
+        self._geometry = value
+
     @classmethod
     def _from_xml(cls, node, path, lazy_load_meshes, device):
         kwargs = cls._parse(node, path, lazy_load_meshes)
         kwargs["origin"] = parse_origin(node)
-        return TorchCollision(**kwargs)
+        return cls(**kwargs)
 
 
 class TorchLink(Link):
@@ -336,10 +456,11 @@ class TorchURDF(URDF):
         device=None,
     ):
         self.device = device
+        self._faces = None
         super().__init__(name, links, joints, transmissions, materials, other_xml)
 
-    @staticmethod
-    def load(file_obj, lazy_load_meshes=True, device=None):
+    @classmethod
+    def load(cls, file_obj, lazy_load_meshes=True, device=None):
         """Load a URDF from a file.
         Parameters
         ----------
@@ -366,7 +487,7 @@ class TorchURDF(URDF):
             path, _ = os.path.split(file_obj.name)
 
         node = tree.getroot()
-        return TorchURDF._from_xml(node, path, lazy_load_meshes, device)
+        return cls._from_xml(node, path, lazy_load_meshes, device)
 
     @classmethod
     def _parse_simple_elements(cls, node, path, lazy_load_meshes, device):
@@ -445,6 +566,19 @@ class TorchURDF(URDF):
         kwargs["device"] = device
         return cls(**kwargs)
 
+    @property
+    def faces(self):
+        if self._faces is not None:
+            return self._faces
+        meshes = []
+        for link in self.links:
+            for visual in link.visuals:
+                for mesh in visual.geometry.meshes:
+                    meshes.append(mesh)
+        mesh = trimesh.util.concatenate(meshes)
+        self._faces = torch.as_tensor(mesh.faces, device=self.device)
+        return self._faces
+
     def _process_cfgs(self, cfgs):
         """Process a list of joint configurations into a dictionary mapping joints to
         configuration values.
@@ -453,6 +587,9 @@ class TorchURDF(URDF):
         """
         joint_cfg = {}
         assert isinstance(cfgs, torch.Tensor), "Incorrectly formatted config array"
+        assert len(self.actuated_joints) == cfgs.size(
+            1
+        ), f"cfg should have {len(self.actuated_joints)} dof"
         n_cfgs = len(cfgs)
         for i, j in enumerate(self.actuated_joints):
             joint_cfg[j] = cfgs[:, i]
@@ -553,3 +690,61 @@ class TorchURDF(URDF):
                     key = visual.geometry
                 fk[key] = torch.matmul(lfk[link], visual.origin.type_as(lfk[link]))
         return fk
+
+    def visual_trimesh_fk_batch(self, cfgs=None):
+        """Computes the poses of the URDF's visual trimeshes using fk.
+
+        -------
+        fk : dict
+            A map from :class:`~trimesh.base.Trimesh` objects that are
+            part of the visual geometry of the specified links to the
+            4x4 homogenous transform matrices that position them relative
+            to the base link's frame.
+        """
+        lfk = self.link_fk_batch(cfgs=cfgs)
+
+        fk = OrderedDict()
+        for link in lfk:
+            for visual in link.visuals:
+                for mesh in visual.geometry.meshes:
+                    poses = torch.matmul(lfk[link], visual.origin.type_as(lfk[link]))
+                    if visual.geometry.mesh is not None:
+                        if visual.geometry.mesh.scale is not None:
+                            S = torch.eye(4).type_as(lfk[link])
+                            S[:3, :3] = torch.diag(visual.geometry.mesh.scale)
+                            poses = torch.matmul(poses, S)
+                    fk[mesh] = poses
+        return fk
+
+    def visual_trimesh_vertices_fk_batch(self, cfgs=None):
+        """Computes the poses of the URDF's visual trimeshes using fk.
+
+        -------
+        fk : dict
+            A map from :class:`~trimesh.base.Trimesh` objects that are
+            part of the visual geometry of the specified links to the
+            4x4 homogenous transform matrices that position them relative
+            to the base link's frame.
+        """
+        lfk = self.link_fk_batch(cfgs=cfgs)
+
+        fk = []
+        for link in lfk:
+            for visual in link.visuals:
+                for vertices in visual.geometry.mesh.vertices:
+                    poses = torch.matmul(lfk[link], visual.origin.type_as(lfk[link]))
+                    if visual.geometry.mesh is not None:
+                        if visual.geometry.mesh.scale is not None:
+                            S = torch.eye(4).type_as(lfk[link])
+                            S[:3, :3] = torch.diag(visual.geometry.mesh.scale)
+                            poses = torch.matmul(poses, S)
+                    fk.append(
+                        transform_point_cloud(
+                            vertices.type_as(poses)[None, ...].expand(
+                                poses.size(0), -1, -1
+                            ),
+                            poses,
+                            in_place=False,
+                        )
+                    )
+        return torch.cat(fk, dim=1)
