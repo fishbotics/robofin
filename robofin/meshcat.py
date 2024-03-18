@@ -1,7 +1,12 @@
+from io import BytesIO
+
 import meshcat
 import numpy as np
+import trimesh
 import urchin
+from geometrout import SE3, SO3
 from geometrout.primitive import Cuboid, Cylinder, Sphere
+from pyribbit.material import MetallicRoughnessMaterial
 
 from robofin.collision import FrankaCollisionSpheres
 from robofin.robot_constants import FrankaConstants
@@ -30,9 +35,9 @@ def generate_color_gradient(rgb_color, num_colors, destination_color):
     dest_r, dest_g, dest_b = destination_color
 
     # Calculate the step size for each color channel
-    r_step = (dest_r - src_r) / (num_colors - 1)
-    g_step = (dest_g - src_g) / (num_colors - 1)
-    b_step = (dest_b - src_b) / (num_colors - 1)
+    r_step = (dest_r - src_r) / max((num_colors - 1), 1)
+    g_step = (dest_g - src_g) / max((num_colors - 1), 1)
+    b_step = (dest_b - src_b) / max((num_colors - 1), 1)
 
     # Generate the gradient colors
     gradient = []
@@ -143,6 +148,72 @@ class MeshcatFrankaGripper:
         return has_collision
 
 
+def get_material(mesh):
+    # If the trimesh visual is undefined, return none for both
+    if not mesh.visual.defined:
+        return None
+
+    if mesh.visual.kind == "texture":
+        # Configure UV coordinates
+        if mesh.visual.uv is not None and len(mesh.visual.uv) != 0:
+            uv = mesh.visual.uv.copy()
+            texcoords = uv[mesh.faces].reshape((3 * len(mesh.faces), uv.shape[1]))
+
+            # Configure mesh material
+            mat = mesh.visual.material
+
+            if isinstance(mat, trimesh.visual.texture.PBRMaterial):
+                material = MetallicRoughnessMaterial(
+                    normalTexture=mat.normalTexture,
+                    occlusionTexture=mat.occlusionTexture,
+                    emissiveTexture=mat.emissiveTexture,
+                    emissiveFactor=mat.emissiveFactor,
+                    alphaMode="BLEND",
+                    baseColorFactor=mat.baseColorFactor,
+                    baseColorTexture=mat.baseColorTexture,
+                    metallicFactor=mat.metallicFactor,
+                    roughnessFactor=mat.roughnessFactor,
+                    metallicRoughnessTexture=mat.metallicRoughnessTexture,
+                    doubleSided=mat.doubleSided,
+                    alphaCutoff=mat.alphaCutoff,
+                )
+            elif isinstance(mat, trimesh.visual.texture.SimpleMaterial):
+                glossiness = mat.kwargs.get("Ns", 1.0)
+                if isinstance(glossiness, list):
+                    glossiness = float(glossiness[0])
+                roughness = (2 / (glossiness + 2)) ** (1.0 / 4.0)
+                material = MetallicRoughnessMaterial(
+                    alphaMode="BLEND",
+                    roughnessFactor=roughness,
+                    baseColorFactor=mat.diffuse,
+                    baseColorTexture=mat.image,
+                )
+            else:
+                raise NotImplementedError(
+                    f"Not implemented for material type {type(mat)}"
+                )
+    elif mesh.visual.kind == "vertex":
+        vc = mesh.visual.vertex_colors.copy()
+        colors = vc[mesh.faces].reshape((3 * len(mesh.faces), vc.shape[1]))
+        material = MetallicRoughnessMaterial(
+            alphaMode="BLEND",
+            baseColorFactor=[1.0, 1.0, 1.0, 1.0],
+            metallicFactor=0.2,
+            roughnessFactor=0.8,
+        )
+    elif mesh.visual.kind == "face":
+        colors = np.repeat(mesh.visual.face_colors, 3, axis=0)
+        material = MetallicRoughnessMaterial(
+            alphaMode="BLEND",
+            baseColorFactor=[1.0, 1.0, 1.0, 1.0],
+            metallicFactor=0.2,
+            roughnessFactor=0.8,
+        )
+    else:
+        raise NotImplementedError(f"Not implemented for visual type {mesh.visual.kind}")
+    return material
+
+
 class MeshcatFranka:
     def __init__(self, franka_idx, vis):
         self.vis = vis
@@ -156,9 +227,72 @@ class MeshcatFranka:
             np.array([*FrankaConstants.NEUTRAL, 0.04])
         )
         for idx, (mesh, transform) in enumerate(trimeshes.items()):
-            self.vis[f"{self.key}/{idx}"].set_object(
-                meshcat.geometry.TriangularMeshGeometry(mesh.vertices, mesh.faces)
-            )
+            # buffer = BytesIO()
+            # mesh.export(buffer, file_type="obj")
+            # buffer.seek(0)
+            # meshcat_geometry = meshcat.geometry.Mesh(
+            #     meshcat.geometry.ObjMeshGeometry.from_stream(buffer),
+            # )
+
+            if isinstance(mesh.visual, trimesh.visual.ColorVisuals):
+                # Extract the vertex colors from the mesh
+                # Trimesh stores colors in RGBA format, but we convert them to RGB as MeshCat does not use the alpha channel.
+                colors = (
+                    np.array(mesh.visual.vertex_colors[:, :3]) / 255.0
+                )  # Normalize the colors
+                if colors.shape[0] > 0:
+                    geometry = meshcat.geometry.TriangularMeshGeometry(
+                        mesh.vertices, mesh.faces, color=colors
+                    )
+                    material = meshcat.geometry.MeshPhongMaterial(vertexColors=True)
+                    meshcat_mesh = meshcat.geometry.Mesh(
+                        geometry,
+                        material,
+                    )
+                else:
+                    # Fallback to face colors if there are no vertex colors
+                    colors = (
+                        np.array(mesh.visual.face_colors[:, :3]) / 255.0
+                    )  # Normalize the colors
+                    colors = colors[faces]  # Assign face colors to vertices
+                    # MeshCat uses face-based coloring, we need to assign colors per face
+                    meshcat_mesh = (
+                        meshcat.geometry.TriangularMeshGeometry(
+                            mesh.vertices, mesh.faces, color=colors
+                        ),
+                    )
+            else:
+                uvs = (
+                    np.array(mesh.visual.uv, dtype=np.float32)
+                    if mesh.visual.uv is not None
+                    else None
+                )
+                texture = mesh.visual.material.image
+                if texture is not None:
+                    buffer = BytesIO()
+                    texture.save(
+                        f"/tmp/my_image_{idx}.png", format="PNG"
+                    )  # Save image to the buffer in PNG format
+                    buffer.seek(0)
+                    binary_image_data = buffer.getvalue()  # Get binary data from buffer
+
+                    image = meshcat.geometry.PngImage.from_file(
+                        f"/tmp/my_image_{idx}.png"
+                    )
+                    # Create a textured material in MeshCat
+                    material = meshcat.geometry.MeshPhongMaterial(
+                        map=meshcat.geometry.ImageTexture(image=image)
+                    )
+                else:
+                    material = meshcat.geometry.MeshPhongMaterial()
+                geometry = meshcat.geometry.TriangularMeshGeometry(
+                    mesh.vertices, mesh.faces
+                )
+                meshcat_mesh = meshcat.geometry.Mesh(
+                    geometry,
+                    material,
+                )
+            self.vis[f"{self.key}/{idx}"].set_object(meshcat_mesh)
             self.vis[f"{self.key}/{idx}"].set_transform(transform)
 
     def __del__(self):
@@ -372,7 +506,9 @@ class Meshcat:
                     color=rgb_to_hex(rgb_color), reflectivity=0.8
                 ),
             )
-            self.vis[f"cylinders/{idx}"].set_transform(cylinder.pose.matrix)
+            # Have to rotate because meshcat cylinders have different frames
+            pose = cylinder.pose * SE3(np.zeros(3), SO3.from_rpy(np.pi / 2, 0, 0).q)
+            self.vis[f"cylinders/{idx}"].set_transform(pose.matrix)
             keys.append(f"cylinders/{idx}")
         return keys
 
