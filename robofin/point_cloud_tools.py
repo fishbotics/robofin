@@ -72,7 +72,7 @@ def _transform_point_cloud_numpy(
 
 
 def _transform_point_cloud_torch(
-    pc, transformation_matrix, vector=False, in_place=True
+    pc, transformation_matrix, vector=False, in_place=False
 ):
     """
 
