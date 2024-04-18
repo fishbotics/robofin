@@ -259,7 +259,7 @@ class TorchFrankaSampler(SamplerBase):
             (
                 config,
                 prismatic_joint
-                * torch.ones((config.shape[0], 2), device=config.device),
+                * torch.ones((config.shape[0], 1), device=config.device),
             ),
             dim=1,
         )
@@ -334,7 +334,7 @@ class TorchFrankaSampler(SamplerBase):
                     self.normals[f"eef_{link_name}"]
                     .float()
                     .repeat((poses.shape[0], 1, 1)),
-                    eef_transform @ fk[link_name],
+                    eef_transform @ visual_fk[link_name],
                     vector=True,
                     in_place=True,
                 )
@@ -403,7 +403,7 @@ class TorchFrankaSampler(SamplerBase):
             (
                 config,
                 prismatic_joint
-                * torch.ones((config.shape[0], 2), device=config.device),
+                * torch.ones((config.shape[0], 1), device=config.device),
             ),
             dim=1,
         )
@@ -575,7 +575,7 @@ class TorchFrankaCollisionSampler:
             (
                 config,
                 prismatic_joint
-                * torch.ones((config.shape[0], 2), device=config.device),
+                * torch.ones((config.shape[0], 1), device=config.device),
             ),
             dim=1,
         )
@@ -750,7 +750,7 @@ class TorchFrankaSelfCollisionSampler(NumpyFrankaSelfCollisionSampler):
             (
                 config,
                 prismatic_joint,
-                *torch.ones((config.shape[0], 2), device=config.device),
+                *torch.ones((config.shape[0], 1), device=config.device),
             ),
             dim=1,
         )
