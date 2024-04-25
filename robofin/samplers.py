@@ -202,6 +202,24 @@ class NumpyFrankaSampler(SamplerBase):
             self.points["panda_rightfinger"],
         )
 
+    def sample_from_poses(self, poses, num_points=None):
+        assert num_points is None or 0 < num_points <= self.num_eef_points
+        return get_points_on_franka_arm(
+            poses,
+            num_points or 0,
+            self.points["panda_link0"],
+            self.points["panda_link1"],
+            self.points["panda_link2"],
+            self.points["panda_link3"],
+            self.points["panda_link4"],
+            self.points["panda_link5"],
+            self.points["panda_link6"],
+            self.points["panda_link7"],
+            self.points["panda_hand"],
+            self.points["panda_leftfinger"],
+            self.points["panda_rightfinger"],
+        )
+
     def sample_end_effector(
         self, pose, prismatic_joint, num_points=None, frame="right_gripper"
     ):
@@ -394,6 +412,62 @@ class TorchFrankaSampler(SamplerBase):
             frame=frame,
         )
 
+    def _sample_from_poses(self, with_normals, poses, num_points=None):
+        points = []
+        if with_normals:
+            normals = []
+        for link_name, link_idx in FrankaConstants.ARM_VISUAL_LINKS.__members__.items():
+            if not self.with_base_link and link_name == "panda_link0":
+                continue
+            pc = transform_point_cloud(
+                self.points[link_name]
+                .float()
+                .repeat((poses[:, link_idx].shape[0], 1, 1)),
+                poses[:, link_idx],
+                in_place=True,
+            )
+            points.append(
+                torch.cat(
+                    (
+                        pc,
+                        link_idx * torch.ones((pc.size(0), pc.size(1), 1)).type_as(pc),
+                    ),
+                    dim=-1,
+                )
+            )
+            if with_normals:
+                normals = transform_point_cloud(
+                    self.normals[link_name]
+                    .float()
+                    .repeat((poses[:, link_idx].shape[0], 1, 1)),
+                    poses[:, link_idx],
+                    vector=True,
+                    in_place=True,
+                )
+                normals.append(
+                    torch.cat(
+                        (
+                            normals,
+                            link_idx
+                            * torch.ones((normals.size(0), normals.size(1), 1)).type_as(
+                                normals
+                            ),
+                        ),
+                        dim=-1,
+                    )
+                )
+        pc = torch.cat(points, dim=1)
+        if with_normals:
+            normals = torch.cat(normals, dim=1)
+        if num_points is None:
+            if with_normals:
+                return pc, normals
+            return pc
+        random_idxs = np.random.choice(pc.shape[1], num_points, replace=False)
+        if with_normals:
+            return pc[:, random_idxs, :], normals[:, random_idxs, :]
+        return pc[:, random_idxs, :]
+
     def _sample(
         self, with_normals, config, prismatic_joint, num_points=None, only_eff=False
     ):
@@ -475,6 +549,9 @@ class TorchFrankaSampler(SamplerBase):
             num_points=num_points,
             only_eff=only_eff,
         )
+
+    def sample_from_poses(self, poses, num_points=None):
+        return self._sample_from_poses(False, poses, num_points=None)
 
     def sample_with_normals(
         self, config, prismatic_joint, num_points=None, only_eff=False

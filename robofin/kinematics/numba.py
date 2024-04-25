@@ -1,7 +1,8 @@
 """
-Note, cannot use the constants for these functions. 
+Note, cannot use the constants for these functions.
 The order of the outputs were painstakingly checked but could be wrong
 """
+
 import numba
 import numpy as np
 from geometrout.maths import transform_in_place
@@ -337,6 +338,49 @@ def franka_arm_visual_fk(
 @numba.jit(nopython=True, cache=True)
 def label(array, lbl):
     return np.concatenate((array, lbl * np.ones((array.shape[0], 1))), axis=1)
+
+
+@numba.jit(nopython=True, cache=True)
+def get_points_on_franka_arm_from_poses(
+    poses,
+    prismatic_joint,
+    sample,
+    panda_link0_points,
+    panda_link1_points,
+    panda_link2_points,
+    panda_link3_points,
+    panda_link4_points,
+    panda_link5_points,
+    panda_link6_points,
+    panda_link7_points,
+    panda_hand_points,
+    panda_leftfinger_points,
+    panda_rightfinger_points,
+):
+    assert len(poses) == 11
+    all_points = np.concatenate(
+        (
+            label(transform_in_place(np.copy(panda_link0_points), poses[0]), 0.0),
+            label(transform_in_place(np.copy(panda_link1_points), poses[1]), 1.0),
+            label(transform_in_place(np.copy(panda_link2_points), poses[2]), 2.0),
+            label(transform_in_place(np.copy(panda_link3_points), poses[3]), 3.0),
+            label(transform_in_place(np.copy(panda_link4_points), poses[4]), 4.0),
+            label(transform_in_place(np.copy(panda_link5_points), poses[5]), 5.0),
+            label(transform_in_place(np.copy(panda_link6_points), poses[6]), 6.0),
+            label(transform_in_place(np.copy(panda_link7_points), poses[7]), 7.0),
+            label(transform_in_place(np.copy(panda_hand_points), poses[8]), 8.0),
+            label(transform_in_place(np.copy(panda_leftfinger_points), poses[9]), 9.0),
+            label(
+                transform_in_place(np.copy(panda_rightfinger_points), poses[10]), 10.0
+            ),
+        ),
+        axis=0,
+    )
+    if sample > 0:
+        return all_points[
+            np.random.choice(all_points.shape[0], sample, replace=False), :
+        ]
+    return all_points
 
 
 @numba.jit(nopython=True, cache=True)
