@@ -355,41 +355,42 @@ class TorchJoint(Joint):
 
         return TorchJoint(**kwargs)
 
-    def _rotation_matrices(self, angles, axis):
+    def _rotation_matrices(self, angles, axes):
         """Compute rotation matrices from angle/axis representations.
         Parameters
         ----------
         angles : (n,) float
             The angles.
-        axis : (3,) float
+        axis : (n, 3) float
             The axis.
         Returns
         -------
         rots : (n,4,4)
             The rotation matrices
         """
-        axis = axis / torch.norm(axis)
+        axes = axes / torch.norm(axes, dim=-1, keepdim=True)
         sina = torch.sin(angles)
         cosa = torch.cos(angles)
-        M = torch.eye(4, device=self.device).repeat((len(angles), 1, 1))
-        M[:, 0, 0] = cosa
-        M[:, 1, 1] = cosa
-        M[:, 2, 2] = cosa
-        M[:, :3, :3] += (
-            torch.ger(axis, axis).repeat((len(angles), 1, 1))
-            * (1.0 - cosa)[:, np.newaxis, np.newaxis]
+        M = (
+            torch.eye(3, device=self.device).repeat((len(angles), 1, 1))
+            * cosa[:, None, None]
         )
-        M[:, :3, :3] += (
-            torch.tensor(
-                [
-                    [0.0, -axis[2], axis[1]],
-                    [axis[2], 0.0, -axis[0]],
-                    [-axis[1], axis[0], 0.0],
-                ],
-                device=self.device,
-            ).repeat((len(angles), 1, 1))
-            * sina[:, np.newaxis, np.newaxis]
+        M = (
+            M
+            + torch.bmm(axes.unsqueeze(-1), axes.unsqueeze(-2))
+            * (1.0 - cosa)[:, None, None]
         )
+        a = torch.stack((torch.zeros_like(axes[:, 0]), -axes[:, 2], axes[:, 1]), dim=-1)
+        b = torch.stack((axes[:, 2], torch.zeros_like(axes[:, 1]), -axes[:, 0]), dim=-1)
+        c = torch.stack((-axes[:, 1], axes[:, 0], torch.zeros_like(axes[:, 1])), dim=-1)
+        M = M + torch.stack((a, b, c), dim=-2) * sina[:, None, None]
+        # Turn into homogeneous matrix (within using in-place assignment to preserve vmap)
+        M = torch.cat((M, torch.zeros_like(M[..., -1:])), dim=-1)
+        bottom_row = torch.cat(
+            (torch.zeros_like(M[..., -1:, :3]), torch.ones_like(M[..., -1:, 0:1])),
+            dim=-1,
+        )
+        M = torch.cat((M, bottom_row), dim=-2)
         return M
 
     def get_child_poses(self, cfg, n_cfgs):
@@ -421,13 +422,22 @@ class TorchJoint(Joint):
                 cfg = torch.zeros(n_cfgs)
             return torch.matmul(
                 self.origin.type_as(cfg),
-                self._rotation_matrices(cfg, self.axis).type_as(cfg),
+                self._rotation_matrices(
+                    cfg, self.axis[None, :].repeat(len(cfg), 1)
+                ).type_as(cfg),
             )
         elif self.joint_type == "prismatic":
             if cfg is None:
                 cfg = torch.zeros(n_cfgs)
-            translation = torch.eye(4, device=self.device).repeat((n_cfgs, 1, 1))
-            translation[:, :3, 3] = self.axis * cfg[:, np.newaxis]
+            M = torch.eye(3, device=self.device).repeat((n_cfgs, 1, 1))
+            M = torch.cat(
+                (M, (self.axis.repeat(n_cfgs, 1) * cfg[:, None])[:, :, None]), dim=-1
+            )
+            bottom_row = torch.cat(
+                (torch.zeros_like(M[..., -1:, :3]), torch.ones_like(M[..., -1:, 0:1])),
+                dim=-1,
+            )
+            translation = torch.cat((M, bottom_row), dim=-2)
             return torch.matmul(self.origin.type_as(cfg), translation.type_as(cfg))
         elif self.joint_type == "planar":
             raise NotImplementedError()
