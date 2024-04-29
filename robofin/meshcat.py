@@ -130,7 +130,7 @@ class MeshcatFrankaGripper:
             for o in obstacles:
                 if o.sdf(sphere.center) <= sphere.radius:
                     self.vis[f"{self.key}/cspheres/{idx}"].set_object(
-                        meshcat.geometry.Sphere(sphere.radius),
+                        meshcat.geometry.Sphere(float(sphere.radius)),
                         meshcat.geometry.MeshLambertMaterial(
                             color=rgb_to_hex([255, 0, 0]), reflectivity=0.8
                         ),
@@ -140,7 +140,7 @@ class MeshcatFrankaGripper:
                     break
             if not collides:
                 self.vis[f"{self.key}/cspheres/{idx}"].set_object(
-                    meshcat.geometry.Sphere(sphere.radius),
+                    meshcat.geometry.Sphere(float(sphere.radius)),
                 )
             transform = np.eye(4)
             transform[:3, -1] = sphere.center
@@ -306,7 +306,7 @@ class MeshcatFranka:
         )
         for idx, sphere in enumerate(spheres):
             self.vis[f"{self.key}/cspheres/{idx}"].set_object(
-                meshcat.geometry.Sphere(sphere.radius)
+                meshcat.geometry.Sphere(float(sphere.radius))
             )
             transform = np.eye(4)
             transform[:3, -1] = sphere.center
@@ -344,7 +344,7 @@ class MeshcatFranka:
             for o in obstacles:
                 if o.sdf(sphere.center) <= sphere.radius:
                     self.vis[f"{self.key}/cspheres/{idx}"].set_object(
-                        meshcat.geometry.Sphere(sphere.radius),
+                        meshcat.geometry.Sphere(float(sphere.radius)),
                         meshcat.geometry.MeshLambertMaterial(
                             color=rgb_to_hex([255, 0, 0]), reflectivity=0.8
                         ),
@@ -354,7 +354,7 @@ class MeshcatFranka:
                     break
             if not collides:
                 self.vis[f"{self.key}/cspheres/{idx}"].set_object(
-                    meshcat.geometry.Sphere(sphere.radius),
+                    meshcat.geometry.Sphere(float(sphere.radius)),
                 )
             transform = np.eye(4)
             transform[:3, -1] = sphere.center
@@ -446,7 +446,7 @@ class Meshcat:
         for sphere, rgb_color in zip(spheres, rgb_colors):
             idx = self._increment_type(self.spheres)
             self.vis[f"spheres/{idx}"].set_object(
-                meshcat.geometry.Sphere(sphere.radius),
+                meshcat.geometry.Sphere(float(sphere.radius)),
                 meshcat.geometry.MeshLambertMaterial(
                     color=rgb_to_hex(rgb_color), reflectivity=0.8
                 ),
@@ -501,7 +501,9 @@ class Meshcat:
         for cylinder, rgb_color in zip(cylinders, rgb_colors):
             idx = self._increment_type(self.cylinders)
             self.vis[f"cylinders/{idx}"].set_object(
-                meshcat.geometry.Cylinder(cylinder.height, cylinder.radius),
+                meshcat.geometry.Cylinder(
+                    float(cylinder.height), float(cylinder.radius)
+                ),
                 meshcat.geometry.MeshLambertMaterial(
                     color=rgb_to_hex(rgb_color), reflectivity=0.8
                 ),
